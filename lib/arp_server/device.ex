@@ -16,7 +16,7 @@ defmodule ARP.Device do
     :user_id,
     :brand,
     :model,
-    :cpu_company,
+    :cpu_vendor,
     :cpu,
     :gpu,
     :ram,
@@ -24,8 +24,13 @@ defmodule ARP.Device do
     :os_ver,
     :system_ver,
     :resolution,
-    :net_type,
-    :net_speed
+    :imsi,
+    :telecom_operator,
+    :conn_net_type,
+    :tel_net_type,
+    :upload_speed,
+    :download_speed,
+    :ver
   ]
 
   def is_idle?(device) do
