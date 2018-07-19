@@ -25,6 +25,8 @@ defmodule ARP.API.HTTP.Controller do
     session = Base.encode64(:crypto.strong_rand_bytes(96))
 
     with true <- is_map(filters),
+         filters <-
+           for({key, val} <- filters, into: %{}, do: {String.to_existing_atom(key), val}),
          {:ok, dev} <- ARP.DeviceManager.request(filters, user_id),
          :ok <- DeviceProtocol.user_request(dev.id, session, ip) do
       Response.render_success(conn, %{

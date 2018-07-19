@@ -75,7 +75,7 @@ defmodule ARP.Device do
         if blank?(value) do
           true
         else
-          case String.to_atom(key) do
+          case key do
             :cpu -> device.cpu == value
             :gpu -> device.gpu == value
             :ram -> device.ram >= value
