@@ -26,7 +26,7 @@ defmodule ARP.API.HTTP.Controller do
 
     with true <- is_map(filters),
          {:ok, dev} <- ARP.DeviceManager.request(filters, user_id),
-         :ok <- DeviceProtocol.notify_device_state_changed(dev.id, dev.state, session, ip) do
+         :ok <- DeviceProtocol.user_request(dev.id, session, ip) do
       Response.render_success(conn, %{
         id: user_id,
         session: session,
