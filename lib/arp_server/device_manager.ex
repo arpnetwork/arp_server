@@ -4,6 +4,7 @@ defmodule ARP.DeviceManager do
   """
 
   alias ARP.Device
+  alias ARP.DeviceNetSpeed
 
   use GenServer
 
@@ -43,6 +44,11 @@ defmodule ARP.DeviceManager do
     GenServer.call(__MODULE__, {:get, id})
   end
 
+  def update_net_speed(ids, upload_speed, download_speed)
+      when is_list(ids) and is_integer(upload_speed) and is_integer(download_speed) do
+    GenServer.cast(__MODULE__, {:update_net_speed, ids, upload_speed, download_speed})
+  end
+
   ## Callbacks
 
   def init(_opts) do
@@ -51,7 +57,9 @@ defmodule ARP.DeviceManager do
 
   def handle_call({:online, device}, _from, devices) do
     unless Map.has_key?(devices, device.id) do
-      device = Device.set_idle(device)
+      DeviceNetSpeed.online(device.ip, device.id)
+
+      device = Device.set_pending(device)
       {:reply, {:ok, device}, Map.put(devices, device.id, device)}
     else
       {:reply, {:error, :invalid_param}, devices}
@@ -60,7 +68,13 @@ defmodule ARP.DeviceManager do
 
   def handle_call({:offline, id}, _from, devices) do
     if Map.has_key?(devices, id) do
-      {:reply, :ok, Map.delete(devices, id)}
+      {dev, devices} = Map.pop(devices, id)
+
+      if dev do
+        DeviceNetSpeed.offline(dev.ip, id)
+      end
+
+      {:reply, :ok, devices}
     else
       {:reply, {:error, :not_found}, devices}
     end
@@ -113,5 +127,21 @@ defmodule ARP.DeviceManager do
 
   def handle_call({:get, id}, _from, devices) do
     {:reply, Map.get(devices, id), devices}
+  end
+
+  def handle_cast({:update_net_speed, ids, upload_speed, download_speed}, devices) do
+    devices =
+      Enum.reduce(ids, devices, fn id, acc ->
+        if Map.has_key?(acc, id) do
+          dev = %{acc[id] | upload_speed: upload_speed, download_speed: download_speed}
+          dev = if Device.is_pending?(dev), do: Device.set_idle(dev), else: dev
+
+          Map.put(acc, id, dev)
+        else
+          acc
+        end
+      end)
+
+    {:noreply, devices}
   end
 end

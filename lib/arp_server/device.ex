@@ -4,9 +4,10 @@ defmodule ARP.Device do
   """
 
   # state value
-  @idle 0
-  @requesting 1
-  @using 2
+  @pending 0
+  @idle 1
+  @requesting 2
+  @using 3
 
   defstruct [
     :id,
@@ -33,8 +34,16 @@ defmodule ARP.Device do
     :ver
   ]
 
+  def is_pending?(device) do
+    device.state == @pending
+  end
+
   def is_idle?(device) do
     device.state == @idle
+  end
+
+  def set_pending(device) do
+    %{device | state: @pending}
   end
 
   def set_idle(device) do
@@ -70,6 +79,8 @@ defmodule ARP.Device do
             :cpu -> device.cpu == value
             :gpu -> device.gpu == value
             :ram -> device.ram >= value
+            :upload_speed -> device.upload_speed >= value
+            :download_speed -> device.download_speed >= value
             _ -> true
           end
         end
