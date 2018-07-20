@@ -183,7 +183,9 @@ defmodule ARP.DeviceNetSpeed do
         # notify tcp to start speed testing
         {ip, device_id} = next
 
-        # TODO notify ARP.API.TCP.DeviceProtocol to start test speed
+        # notify ARP.API.TCP.DeviceProtocol to start test speed
+        ARP.API.TCP.DeviceProtocol.speed_test(device_id)
+
         %{state | testing: Map.put(state[:testing], ip, device_id), queue: new_queue}
       else
         %{state | queue: new_queue}

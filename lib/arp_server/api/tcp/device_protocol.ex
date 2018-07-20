@@ -97,8 +97,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
           dl_speed = Map.get(state, :dl_speed)
 
           if dl_speed do
-            _ip = get_ip(socket)
-            # TODO set final speed
+            ip = get_ip(socket)
+            # set final speed
+            ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
           end
 
           {:noreply, state, @timeout}
@@ -224,8 +225,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
     ul_speed = Map.get(state, :ul_speed)
 
     if ul_speed do
-      _ip = get_ip(socket)
-      # TODO set final speed
+      ip = get_ip(socket)
+      # set final speed
+      ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
     end
 
     state
