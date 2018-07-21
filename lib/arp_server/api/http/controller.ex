@@ -26,7 +26,11 @@ defmodule ARP.API.HTTP.Controller do
 
     with true <- is_map(filters),
          filters <-
-           for({key, val} <- filters, into: %{}, do: {String.to_existing_atom(key), val}),
+           for(
+             {key, val} <- filters,
+             into: %{},
+             do: {key |> Macro.underscore() |> String.to_existing_atom(), val}
+           ),
          {:ok, dev} <- ARP.DeviceManager.request(filters, user_id),
          :ok <- DeviceProtocol.user_request(dev.id, session, ip) do
       Response.render_success(conn, %{

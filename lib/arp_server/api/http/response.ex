@@ -36,6 +36,23 @@ defmodule ARP.API.HTTP.Response do
   def render(conn, status, data) do
     conn
     |> Conn.put_resp_content_type(@default_content_type)
-    |> Conn.send_resp(status, Poison.encode!(data))
+    |> Conn.send_resp(status, data |> format_data() |> Poison.encode!())
+  end
+
+  defp format_data(data) when is_map(data) do
+    for {key, val} <- data, into: %{} do
+      {first, rest} =
+        if(is_atom(key), do: Atom.to_string(key), else: key)
+        |> Macro.camelize()
+        |> String.split_at(1)
+
+      new_key = String.downcase(first) <> rest
+
+      {new_key, format_data(val)}
+    end
+  end
+
+  defp format_data(data) do
+    data
   end
 end

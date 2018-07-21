@@ -94,24 +94,22 @@ defmodule ARP.Device do
   Only free device can be selected.
   """
   def select_fields(devices) when is_list(devices) do
-    {cpu, ram, gpu} =
-      List.foldl(devices, {[], [], []}, fn device, {cpu, ram, gpu} = acc ->
-        if is_idle?(device) do
-          cpu = unless blank?(device.cpu), do: [device.cpu | cpu], else: cpu
-          ram = unless blank?(device.ram), do: [device.ram | ram], else: ram
-          gpu = unless blank?(device.gpu), do: [device.gpu | gpu], else: gpu
+    fields = [:cpu, :ram, :gpu, :upload_speed, :download_speed]
 
-          {cpu, ram, gpu}
+    res =
+      List.foldl(devices, %{}, fn device, acc ->
+        if is_idle?(device) do
+          for field <- fields, v = Map.get(device, field), !blank?(v), into: %{} do
+            {field, [v | acc[field] || []]}
+          end
         else
           acc
         end
       end)
 
-    %{
-      cpu: cpu |> Enum.uniq(),
-      ram: ram |> Enum.uniq(),
-      gpu: gpu |> Enum.uniq()
-    }
+    for {k, v} <- res, into: %{} do
+      {k, v |> Enum.uniq()}
+    end
   end
 
   def blank?(value) when is_binary(value) do
