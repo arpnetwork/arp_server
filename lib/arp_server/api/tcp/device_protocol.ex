@@ -7,6 +7,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   use GenServer
 
+  @protocol_packet 4
+  @protocol_type_data 1
+  @protocol_type_speed_test 2
+
   @cmd_online 1
   @cmd_online_resp 2
   @cmd_user_request 3
@@ -18,7 +22,14 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_result_success 0
   @cmd_result_ver_err -1
 
+  @speed_test_data 1
+  @speed_test_start 2
+  @speed_test_end 3
+
   @timeout 60_000
+
+  @speed_test_packet_len 2_621_440
+  @speed_test_interval 200
 
   @ver "1.0"
   @compatible_ver [@ver]
@@ -56,7 +67,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc false
   def init(%{ref: ref, socket: socket, transport: transport} = state) do
     :ok = :ranch.accept_ack(ref)
-    :ok = transport.setopts(socket, active: true, packet: 4)
+    :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
     :gen_server.enter_loop(
       __MODULE__,
@@ -79,45 +90,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
   """
   def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     if byte_size(data) > 0 do
-      cond do
-        binary_part(data, 0, 1) == <<1>> ->
-          %{id: id} =
-            req = binary_part(data, 1, byte_size(data) - 1) |> Poison.decode!(keys: :atoms!)
+      <<@protocol_type_data, data::binary>> = data
+      %{id: id} = req = Poison.decode!(data, keys: :atoms!)
 
-          state = handle_command(id, Map.get(req, :data), socket, state)
+      state = handle_command(id, Map.get(req, :data), socket, state)
 
-          {:noreply, state, @timeout}
-
-        binary_part(data, 0, 2) == <<2, 1>> ->
-          # upload speed data
-          recv_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-          start_time = state.ul_start
-          ul_speed = round(byte_size(data) / (recv_time - start_time) * 1000)
-          state = Map.put(state, :ul_speed, ul_speed)
-          dl_speed = Map.get(state, :dl_speed)
-
-          if dl_speed do
-            ip = get_ip(socket)
-            # set final speed
-            ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
-          end
-
-          {:noreply, state, @timeout}
-
-        binary_part(data, 0, 2) == <<2, 2>> ->
-          # start upload speed
-          start_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-          state = Map.put(state, :ul_start, start_time)
-
-          {:noreply, state, @timeout}
-
-        binary_part(data, 0, 2) == <<2, 3>> ->
-          # end upload speed
-          {:noreply, state, @timeout}
-
-        true ->
-          {:noreply, state, @timeout}
-      end
+      {:noreply, state, @timeout}
     else
       # :heartbeat
       {:noreply, state, @timeout}
@@ -145,12 +123,51 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:stop, :normal, state}
   end
 
-  def handle_info(:speed_test, %{socket: socket} = state) do
-    pad_data = <<2, 1>> |> String.pad_trailing(10_000_000, <<0>>)
+  def handle_info(:speed_test, %{socket: socket, transport: transport} = state) do
+    :ok = transport.setopts(socket, active: false, packet: :raw)
 
-    :ok = :ranch_tcp.send(socket, <<2, 2>>)
-    :ok = :ranch_tcp.send(socket, pad_data)
-    :ranch_tcp.send(socket, <<2, 3>>)
+    # send download speed test data
+    pad_data =
+      gen_speed_test_data(@speed_test_data, String.pad_trailing("a", @speed_test_packet_len, "a"))
+
+    :ok = :ranch_tcp.send(socket, gen_speed_test_data(@speed_test_start))
+    speed_test_send_loop(socket, pad_data, 5)
+    :ok = :ranch_tcp.send(socket, gen_speed_test_data(@speed_test_end))
+
+    # receive download speed test result
+    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+    {:ok, data} = :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @timeout)
+    <<@protocol_type_data, data::binary>> = data
+    %{id: 7, data: %{dl_speed: dl_speed}} = Poison.decode!(data, keys: :atoms!)
+
+    # upload speed test start
+    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+
+    {:ok, <<@protocol_type_speed_test, @speed_test_start>>} =
+      :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @timeout)
+
+    start_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+
+    # receive upload speed test data
+    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+    {:ok, <<@protocol_type_speed_test, @speed_test_data>>} = :ranch_tcp.recv(socket, 2, @timeout)
+    size = :binary.decode_unsigned(size) - 2
+    speed_test_recv_loop(socket, size)
+
+    # upload speed test end
+    {:ok, len} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+
+    {:ok, <<@protocol_type_speed_test, @speed_test_end>>} =
+      :ranch_tcp.recv(socket, :binary.decode_unsigned(len), @timeout)
+
+    end_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    ul_speed = round(size / (end_time - start_time) * 1000)
+
+    ip = get_ip(socket)
+    # set final speed
+    ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
+
+    :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
     {:noreply, state}
   end
@@ -262,5 +279,36 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp get_ip(socket) do
     {:ok, {ip, _}} = :ranch_tcp.peername(socket)
     ip |> Tuple.to_list() |> Enum.join(".")
+  end
+
+  defp gen_speed_test_data(proto, data \\ <<>>) do
+    protos = <<@protocol_type_speed_test, proto>>
+    size = byte_size(protos) + byte_size(data)
+    [<<size::32>>, protos, data]
+  end
+
+  defp speed_test_send_loop(socket, pad_data, count) do
+    :ok = :ranch_tcp.send(socket, pad_data)
+    Process.sleep(@speed_test_interval)
+
+    if count > 0 do
+      speed_test_send_loop(socket, pad_data, count - 1)
+    end
+  end
+
+  defp speed_test_recv_loop(socket, size) do
+    cond do
+      size == 0 ->
+        nil
+
+      size >= @speed_test_packet_len ->
+        {:ok, data} = :ranch_tcp.recv(socket, @speed_test_packet_len, @timeout)
+        Process.sleep(@speed_test_interval)
+        speed_test_recv_loop(socket, size - byte_size(data))
+
+      size < @speed_test_packet_len ->
+        {:ok, _data} = :ranch_tcp.recv(socket, size, @timeout)
+        speed_test_recv_loop(socket, 0)
+    end
   end
 end
