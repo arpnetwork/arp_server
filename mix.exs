@@ -17,7 +17,7 @@ defmodule ARP.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :cowboy, :plug],
+      extra_applications: [:logger, :ethereumex, :cowboy, :plug],
       mod: {ARP.Application, []}
     ]
   end
@@ -28,7 +28,15 @@ defmodule ARP.MixProject do
       {:poison, "~> 3.1"},
       {:cowboy, "~> 2.4"},
       {:plug, "~> 1.6"},
-      {:elixir_uuid, "~> 1.2"}
+      {:elixir_uuid, "~> 1.2"},
+      {:libsecp256k1,
+       github: "exthereum/libsecp256k1",
+       ref: "e940555514061ece8f08cc773eecb1b5f5d9d0cf",
+       manager: :rebar,
+       override: true},
+      {:ethereumex, "~> 0.3.2"},
+      {:abi, "~> 0.1.8"},
+      {:blockchain, "~> 0.1.7"}
     ]
   end
 
