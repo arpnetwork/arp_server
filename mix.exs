@@ -17,7 +17,7 @@ defmodule ARP.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :ethereumex, :cowboy, :plug],
+      extra_applications: [:logger, :os_mon, :ethereumex, :cowboy, :plug],
       mod: {ARP.Application, []}
     ]
   end
