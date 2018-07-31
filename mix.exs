@@ -36,7 +36,11 @@ defmodule ARP.MixProject do
        override: true},
       {:ethereumex, "~> 0.3.2"},
       {:abi, "~> 0.1.8"},
-      {:blockchain, "~> 0.1.7"}
+      {:blockchain, "~> 0.1.7"},
+      {:keccakf1600, "~> 2.0", hex: :keccakf1600_orig},
+      {:pbkdf2, "~> 2.0"},
+      {:erlscrypt, git: "git://github.com/K2InformaticsGmbH/erlscrypt.git"},
+      {:ex_prompt, "~> 0.1.3"}
     ]
   end
 

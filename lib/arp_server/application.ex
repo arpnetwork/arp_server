@@ -6,6 +6,7 @@ defmodule ARP.Application do
   def start(_type, _args) do
     children = [
       ARP.API.TCP.Store,
+      ARP.Account,
       ARP.DeviceManager,
       ARP.DeviceNetSpeed,
       :ranch.child_spec(
@@ -24,6 +25,17 @@ defmodule ARP.Application do
     ]
 
     opts = [strategy: :one_for_one, name: ARP.Supervisor]
-    Supervisor.start_link(children, opts)
+    {:ok, pid} = Supervisor.start_link(children, opts)
+
+    # import keystore file
+    auth = ExPrompt.password("input your keystore password:") |> String.trim_trailing("\n")
+
+    if ARP.Account.init_key(auth) == :ok do
+      IO.puts(:stdio, "arp server is running!")
+      {:ok, pid}
+    else
+      IO.puts("keystore file invalid or password error!")
+      {:error, :normal}
+    end
   end
 end
