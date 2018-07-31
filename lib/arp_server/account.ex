@@ -8,21 +8,21 @@ defmodule ARP.Account do
   use GenServer
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: Account)
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def init_key(auth) do
-    GenServer.call(Account, {:init_key, auth}, 10_000)
+    GenServer.call(__MODULE__, {:init_key, auth})
   end
 
   def get_info do
-    GenServer.call(Account, :get_info)
+    GenServer.call(__MODULE__, :get_info)
   end
 
   # Callbacks
 
   def init(_opts) do
-    {:ok, %{private_key: nil}}
+    {:ok, %{private_key: nil, public_key: nil, addr: nil}}
   end
 
   def handle_call({:init_key, auth}, _from, state) do
@@ -31,7 +31,9 @@ defmodule ARP.Account do
     with {:ok, file} <- File.read(file_name),
          {:ok, file_map} <- file |> String.downcase() |> Poison.decode(keys: :atoms),
          {:ok, private_key} <- Crypto.decrypt_keystore(file_map, auth) do
-      {:reply, :ok, %{state | private_key: private_key}}
+      public_key = ARP.Crypto.eth_privkey_to_pubkey(private_key)
+      addr = ARP.Crypto.get_eth_addr(public_key)
+      {:reply, :ok, %{state | private_key: private_key, public_key: public_key, addr: addr}}
     else
       _ ->
         {:reply, :error, state}
