@@ -11,13 +11,6 @@ defmodule ARP.Crypto do
   def keccak256(data), do: :keccakf1600.hash(:sha3_256, data)
 
   @doc """
-  {v, r, s} to string sign
-  """
-  def encode_sign(v, r, s) do
-    Integer.to_string(r, 16) <> Integer.to_string(s, 16) <> Integer.to_string(v, 16)
-  end
-
-  @doc """
   string sign to {v, r, s}
   """
   def decode_sign(signature) do
@@ -55,7 +48,7 @@ defmodule ARP.Crypto do
   def eth_sign(msg, private_key) do
     hash = msg_hash(msg)
 
-    {:ok, <<r::size(256), s::size(256)>>, v} =
+    {:ok, rs, v} =
       :libsecp256k1.ecdsa_sign_compact(
         hash,
         Base.decode16!(private_key, case: :mixed),
@@ -63,7 +56,7 @@ defmodule ARP.Crypto do
         <<>>
       )
 
-    encode_sign(@base_recovery_id + v, r, s)
+    Base.encode16(rs <> <<@base_recovery_id + v>>, case: :lower)
   end
 
   @doc """
