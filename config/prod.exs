@@ -2,7 +2,8 @@ use Mix.Config
 
 config :arp_server,
   chain_id: 1,
-  contract_address: "0xbeb6fdf4ef6ceb975157be43cbe0047b248a8922"
+  token_contract_address: "0xbeb6fdf4ef6ceb975157be43cbe0047b248a8922",
+  registry_contract_address: ""
 
 config :ethereumex,
   url: ""

@@ -1,11 +1,12 @@
 use Mix.Config
 
 config :arp_server,
-  chain_id: 10,
-  contract_address: "0x9d158a79804e451bb1d7b1d87ebb7a5804e636d2"
+  chain_id: 1000,
+  token_contract_address: "0x8d39dd6b431bfb065b51fea07b7ee75bef0b53f8",
+  registry_contract_address: "0xe1c62093f55e8d7a86198dd8186e6de414b3fae4"
 
 config :ethereumex,
-  url: "http://localhost:8545"
+  url: "http://192.168.0.164:8545"
 
 config :os_mon,
   start_cpu_sup: true,

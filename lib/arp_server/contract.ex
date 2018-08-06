@@ -4,10 +4,13 @@ defmodule ARP.Contract do
   """
 
   @chain_id Application.get_env(:arp_server, :chain_id)
-  @contract_address Application.get_env(:arp_server, :contract_address)
+  @token_contract Application.get_env(:arp_server, :token_contract_address)
+  @registry_contract Application.get_env(:arp_server, :registry_contract_address)
 
   @default_gas_price 41_000_000_000
-  @default_gas_limit 210_000
+  @default_gas_limit 200_000
+
+  alias ARP.Crypto
 
   @doc """
   Get the eth balance by calling the rpc api of the block chain node.
@@ -28,7 +31,7 @@ defmodule ARP.Contract do
 
     params = %{
       data: "0x" <> abi_encoded_data,
-      to: @contract_address
+      to: @token_contract
     }
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
@@ -36,11 +39,75 @@ defmodule ARP.Contract do
   end
 
   @doc """
+  Approve to registry contract.
+  """
+  @spec approve(String.t(), integer, integer, integer) :: {:ok, binary} | :error
+  def approve(
+        private_key,
+        value,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    address = @registry_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    encoded_abi = ABI.encode("approve(address,uint256)", [address, value])
+
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  @doc """
+  Register miner.
+  """
+  @spec register(String.t(), integer, integer, integer, integer, integer, integer) ::
+          {:ok, binary} | :error
+  def register(
+        private_key,
+        ip,
+        port,
+        capacity,
+        amount,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    encoded_abi =
+      ABI.encode("register(uint32,uint16,uint256,uint256)", [ip, port, capacity, amount])
+
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  @doc """
+  Get registed info.
+  """
+  @spec get_registered_info(String.t()) :: map()
+  def get_registered_info(address) do
+    address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    encoded_abi = ABI.encode("servers(address)", [address]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> encoded_abi,
+      to: @registry_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    <<ip::size(256), port::size(256), capacity::size(256), amount::size(256), expired::size(256),
+      deviceCount::size(256)>> = res
+
+    %{
+      ip: ip,
+      port: port,
+      capacity: capacity,
+      amount: amount,
+      expired: expired,
+      deviceCount: deviceCount
+    }
+  end
+
+  @doc """
   Transfer arp to some one.
   """
   def transfer_arp(
         private_key,
-        from,
         to,
         value,
         gas_price \\ @default_gas_price,
@@ -49,23 +116,24 @@ defmodule ARP.Contract do
     to = to |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("transfer(address,uint)", [to, value])
 
-    send_transaction(@contract_address, encoded_abi, private_key, from, gas_price, gas_limit)
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
 
   @doc """
   Send transaction to a contract.
   """
-  @spec send_transaction(String.t(), String.t(), String.t(), String.t(), integer, integer) ::
+  @spec send_transaction(String.t(), String.t(), String.t(), integer, integer) ::
           {:ok, binary} | :error
-  def send_transaction(contract_address, encoded_abi, private_key, from, gas_price, gas_limit) do
+  def send_transaction(contract, encoded_abi, private_key, gas_price, gas_limit) do
+    from = Crypto.eth_privkey_to_pubkey(private_key) |> Crypto.get_eth_addr()
     private_key = Base.decode16!(private_key, case: :mixed)
-    contract_address = contract_address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
     bt = %Blockchain.Transaction{
       nonce: get_transaction_count(from),
       gas_price: gas_price,
       gas_limit: gas_limit,
-      to: contract_address,
+      to: contract,
       value: 0,
       v: 0,
       r: 0,
