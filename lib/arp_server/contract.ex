@@ -39,6 +39,24 @@ defmodule ARP.Contract do
   end
 
   @doc """
+  Get allowance.
+  """
+  @spec allowance(String.t()) :: integer
+  def allowance(owner) do
+    owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    spender = @registry_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    abi_encoded_data = ABI.encode("allowance(address,address)", [owner, spender]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> abi_encoded_data,
+      to: @token_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    hex_string_to_integer(res)
+  end
+
+  @doc """
   Approve to registry contract.
   """
   @spec approve(String.t(), integer, integer, integer) :: {:ok, binary} | :error
