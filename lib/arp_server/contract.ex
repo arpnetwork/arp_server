@@ -15,7 +15,7 @@ defmodule ARP.Contract do
   @doc """
   Get the eth balance by calling the rpc api of the block chain node.
   """
-  @spec get_eth_balance(String.t()) :: integer | :error
+  @spec get_eth_balance(String.t()) :: integer() | :error
   def get_eth_balance(address) do
     {:ok, res} = Ethereumex.HttpClient.eth_get_balance(address)
     hex_string_to_integer(res)
@@ -24,7 +24,7 @@ defmodule ARP.Contract do
   @doc """
   Get the arp balance by calling the constract api.
   """
-  @spec get_arp_balance(String.t()) :: integer | :error
+  @spec get_arp_balance(String.t()) :: integer() | :error
   def get_arp_balance(address) do
     address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     abi_encoded_data = ABI.encode("balanceOf(address)", [address]) |> Base.encode16(case: :lower)
@@ -41,11 +41,13 @@ defmodule ARP.Contract do
   @doc """
   Get allowance.
   """
-  @spec allowance(String.t()) :: integer
+  @spec allowance(String.t()) :: integer()
   def allowance(owner) do
     owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     spender = @registry_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    abi_encoded_data = ABI.encode("allowance(address,address)", [owner, spender]) |> Base.encode16(case: :lower)
+
+    abi_encoded_data =
+      ABI.encode("allowance(address,address)", [owner, spender]) |> Base.encode16(case: :lower)
 
     params = %{
       data: "0x" <> abi_encoded_data,
@@ -59,7 +61,7 @@ defmodule ARP.Contract do
   @doc """
   Approve to registry contract.
   """
-  @spec approve(String.t(), integer, integer, integer) :: {:ok, binary} | :error
+  @spec approve(String.t(), integer(), integer(), integer()) :: {:ok, String.t()} | :error
   def approve(
         private_key,
         value,
@@ -75,8 +77,8 @@ defmodule ARP.Contract do
   @doc """
   Register miner.
   """
-  @spec register(String.t(), integer, integer, integer, integer, integer, integer) ::
-          {:ok, binary} | :error
+  @spec register(String.t(), integer(), integer(), integer(), integer(), integer(), integer()) ::
+          {:ok, String.t()} | :error
   def register(
         private_key,
         ip,
@@ -140,8 +142,8 @@ defmodule ARP.Contract do
   @doc """
   Send transaction to a contract.
   """
-  @spec send_transaction(String.t(), String.t(), String.t(), integer, integer) ::
-          {:ok, binary} | :error
+  @spec send_transaction(String.t(), String.t(), String.t(), integer(), integer()) ::
+          {:ok, String.t()} | :error
   def send_transaction(contract, encoded_abi, private_key, gas_price, gas_limit) do
     from = Crypto.eth_privkey_to_pubkey(private_key) |> Crypto.get_eth_addr()
     private_key = Base.decode16!(private_key, case: :mixed)
@@ -173,13 +175,13 @@ defmodule ARP.Contract do
   @doc """
   Get pending transaction count.
   """
-  @spec get_transaction_count(String.t()) :: integer
+  @spec get_transaction_count(String.t()) :: integer()
   def get_transaction_count(address) do
     {:ok, res} = Ethereumex.HttpClient.eth_get_transaction_count(address, "pending")
     hex_string_to_integer(res)
   end
 
-  @spec hex_string_to_integer(String.t()) :: integer
+  @spec hex_string_to_integer(String.t()) :: integer()
   defp hex_string_to_integer(string) do
     string = String.trim_leading(string, "0x")
     len = String.length(string)
