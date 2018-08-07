@@ -19,8 +19,11 @@ defmodule ARP.Application do
       ),
       Plug.Adapters.Cowboy2.child_spec(
         scheme: :http,
-        plug: ARP.API.HTTP.Router,
-        options: [port: 4040]
+        plug: {JSONRPC2.Servers.HTTP.Plug, ARP.API.JSONRPC2.Handler},
+        options: [
+          port: 4040,
+          ref: ARP.API.JSONRPC2.Handler.HTTP
+        ]
       )
     ]
 
