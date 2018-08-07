@@ -10,6 +10,9 @@ defmodule ARP.Contract do
   @default_gas_price 41_000_000_000
   @default_gas_limit 200_000
 
+  @receipt_block_time 15_000
+  @receipt_attempts 40
+
   alias ARP.Crypto
 
   @doc """
@@ -61,7 +64,8 @@ defmodule ARP.Contract do
   @doc """
   Approve to registry contract.
   """
-  @spec approve(String.t(), integer(), integer(), integer()) :: {:ok, String.t()} | :error
+  @spec approve(String.t(), integer(), integer(), integer()) ::
+          {:ok, String.t()} | {:error, term()}
   def approve(
         private_key,
         value,
@@ -78,7 +82,7 @@ defmodule ARP.Contract do
   Register miner.
   """
   @spec register(String.t(), integer(), integer(), integer(), integer(), integer(), integer()) ::
-          {:ok, String.t()} | :error
+          {:ok, String.t()} | {:error, term()}
   def register(
         private_key,
         ip,
@@ -143,7 +147,7 @@ defmodule ARP.Contract do
   Send transaction to a contract.
   """
   @spec send_transaction(String.t(), String.t(), String.t(), integer(), integer()) ::
-          {:ok, String.t()} | :error
+          {:ok, map()} | {:error, any()}
   def send_transaction(contract, encoded_abi, private_key, gas_price, gas_limit) do
     from = Crypto.eth_privkey_to_pubkey(private_key) |> Crypto.get_eth_addr()
     private_key = Base.decode16!(private_key, case: :mixed)
@@ -169,7 +173,15 @@ defmodule ARP.Contract do
       |> ExRLP.encode()
       |> Base.encode16(case: :lower)
 
-    Ethereumex.HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
+    res = Ethereumex.HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
+
+    case res do
+      {:ok, tx_hash} ->
+        get_transaction_receipt(tx_hash, @receipt_attempts)
+
+      _ ->
+        res
+    end
   end
 
   @doc """
@@ -179,6 +191,30 @@ defmodule ARP.Contract do
   def get_transaction_count(address) do
     {:ok, res} = Ethereumex.HttpClient.eth_get_transaction_count(address, "pending")
     hex_string_to_integer(res)
+  end
+
+  @doc """
+  Get transaction receipt.
+  """
+  @spec get_transaction_receipt(String.t(), integer(), term()) :: {:ok, map()}
+  def get_transaction_receipt(tx_hash, attempts, res \\ {:ok, nil})
+
+  def get_transaction_receipt(_tx_hash, 0, _) do
+    {:error, :timeout}
+  end
+
+  def get_transaction_receipt(_tx_hash, _attempts, {:error, reason}) do
+    {:error, reason}
+  end
+
+  def get_transaction_receipt(_tx_hash, _attempts, {:ok, receipt}) when is_map(receipt) do
+    {:ok, receipt}
+  end
+
+  def get_transaction_receipt(tx_hash, attempts, _) do
+    Process.sleep(@receipt_block_time)
+    res = Ethereumex.HttpClient.eth_get_transaction_receipt(tx_hash)
+    get_transaction_receipt(tx_hash, attempts - 1, res)
   end
 
   @spec hex_string_to_integer(String.t()) :: integer()
