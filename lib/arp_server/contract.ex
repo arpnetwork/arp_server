@@ -128,6 +128,33 @@ defmodule ARP.Contract do
   end
 
   @doc """
+  get device bind info
+  """
+  @spec get_device_bind_info(String.t()) :: map()
+  def get_device_bind_info(address) do
+    address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    encoded_abi = ABI.encode("devices(address)", [address]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> encoded_abi,
+      to: @registry_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    <<server::binary-size(32), amount::size(256), expired::size(256)>> = res
+
+    server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
+
+    %{
+      server: "0x" <> server,
+      amount: amount,
+      expired: expired
+    }
+  end
+
+  @doc """
   Transfer arp to some one.
   """
   def transfer_arp(

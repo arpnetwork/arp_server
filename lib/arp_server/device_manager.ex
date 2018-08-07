@@ -12,36 +12,32 @@ defmodule ARP.DeviceManager do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def online(%{id: id} = device) when is_binary(id) and byte_size(id) > 0 do
+  def online(%{address: address} = device) when is_binary(address) and byte_size(address) > 0 do
     GenServer.call(__MODULE__, {:online, device})
   end
 
-  def offline(id) do
-    GenServer.call(__MODULE__, {:offline, id})
+  def offline(address) do
+    GenServer.call(__MODULE__, {:offline, address})
   end
 
   def selection do
     GenServer.call(__MODULE__, :selection)
   end
 
-  def request(filters, user_id) when is_map(filters) and is_binary(user_id) do
-    GenServer.call(__MODULE__, {:request, filters, user_id})
+  def request(filters, dapp_address) when is_map(filters) and is_binary(dapp_address) do
+    GenServer.call(__MODULE__, {:request, filters, dapp_address})
   end
 
-  def use(id) do
-    GenServer.call(__MODULE__, {:use, id})
-  end
-
-  def idle(id) do
-    GenServer.call(__MODULE__, {:idle, id})
+  def idle(address) do
+    GenServer.call(__MODULE__, {:idle, address})
   end
 
   def clear do
     GenServer.call(__MODULE__, :clear)
   end
 
-  def get(id) do
-    GenServer.call(__MODULE__, {:get, id})
+  def get(address) do
+    GenServer.call(__MODULE__, {:get, address})
   end
 
   def update_net_speed(ids, upload_speed, download_speed)
@@ -56,22 +52,22 @@ defmodule ARP.DeviceManager do
   end
 
   def handle_call({:online, device}, _from, devices) do
-    unless Map.has_key?(devices, device.id) do
-      DeviceNetSpeed.online(device.ip, device.id)
+    unless Map.has_key?(devices, device.address) do
+      DeviceNetSpeed.online(device.ip, device.address)
 
       device = Device.set_pending(device)
-      {:reply, {:ok, device}, Map.put(devices, device.id, device)}
+      {:reply, {:ok, device}, Map.put(devices, device.address, device)}
     else
       {:reply, {:error, :invalid_param}, devices}
     end
   end
 
-  def handle_call({:offline, id}, _from, devices) do
-    if Map.has_key?(devices, id) do
-      {dev, devices} = Map.pop(devices, id)
+  def handle_call({:offline, address}, _from, devices) do
+    if Map.has_key?(devices, address) do
+      {dev, devices} = Map.pop(devices, address)
 
       if dev do
-        DeviceNetSpeed.offline(dev.ip, id)
+        DeviceNetSpeed.offline(dev.ip, address)
       end
 
       {:reply, :ok, devices}
@@ -84,37 +80,24 @@ defmodule ARP.DeviceManager do
     {:reply, devices |> Map.values() |> Device.select_fields(), devices}
   end
 
-  def handle_call({:request, filters, user_id}, _from, devices) do
+  def handle_call({:request, filters, dapp_address}, _from, devices) do
     with {_, dev} <-
            Enum.find(devices, :error, fn {_, device} ->
              Device.is_idle?(device) and Device.match(device, filters)
            end),
-         {:ok, dev} <- Device.set_requesting(dev, user_id) do
-      {:reply, {:ok, dev}, Map.put(devices, dev.id, dev)}
+         {:ok, dev} <- Device.set_allocating(dev, dapp_address) do
+      {:reply, {:ok, dev}, Map.put(devices, dev.address, dev)}
     else
       _ ->
         {:reply, {:error, :no_free_device}, devices}
     end
   end
 
-  def handle_call({:use, id}, _from, devices) do
-    with {:ok, device} <- Map.fetch(devices, id),
-         {:ok, dev} <- Device.set_using(device) do
-      {:reply, {:ok, dev}, Map.put(devices, dev.id, dev)}
-    else
-      {:error, _} ->
-        {:reply, {:error, :invalid_param}, devices}
-
-      :error ->
-        {:reply, {:error, :not_found}, devices}
-    end
-  end
-
-  def handle_call({:idle, id}, _from, devices) do
-    case Map.fetch(devices, id) do
+  def handle_call({:idle, address}, _from, devices) do
+    case Map.fetch(devices, address) do
       {:ok, dev} ->
         dev = Device.set_idle(dev)
-        {:reply, {:ok, dev}, Map.put(devices, dev.id, dev)}
+        {:reply, {:ok, dev}, Map.put(devices, dev.address, dev)}
 
       :error ->
         {:reply, {:error, :not_found}, devices}
@@ -125,8 +108,8 @@ defmodule ARP.DeviceManager do
     {:reply, :ok, %{}}
   end
 
-  def handle_call({:get, id}, _from, devices) do
-    {:reply, Map.get(devices, id), devices}
+  def handle_call({:get, address}, _from, devices) do
+    {:reply, Map.get(devices, address), devices}
   end
 
   def handle_cast({:update_net_speed, ids, upload_speed, download_speed}, devices) do

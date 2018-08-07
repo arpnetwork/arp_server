@@ -6,18 +6,16 @@ defmodule ARP.Device do
   # state value
   @pending 0
   @idle 1
-  @requesting 2
-  @using 3
+  @allocating 2
 
   defstruct [
-    :id,
+    :address,
     :ip,
     :port,
     :state,
-    :user_id,
+    :dapp_address,
     :brand,
     :model,
-    :cpu_vendor,
     :cpu,
     :gpu,
     :ram,
@@ -27,8 +25,8 @@ defmodule ARP.Device do
     :resolution,
     :imsi,
     :telecom_operator,
-    :conn_net_type,
-    :tel_net_type,
+    :connectivity,
+    :telephony,
     :upload_speed,
     :download_speed,
     :ver
@@ -47,20 +45,12 @@ defmodule ARP.Device do
   end
 
   def set_idle(device) do
-    %{device | state: @idle, user_id: nil}
+    %{device | state: @idle, dapp_address: nil}
   end
 
-  def set_requesting(device, user_id) do
+  def set_allocating(device, dapp_address) do
     if device.state == @idle do
-      {:ok, %{device | state: @requesting, user_id: user_id}}
-    else
-      {:error, :invalid_state}
-    end
-  end
-
-  def set_using(device) do
-    if device.state == @requesting do
-      {:ok, %{device | state: @using}}
+      {:ok, %{device | state: @allocating, dapp_address: dapp_address}}
     else
       {:error, :invalid_state}
     end

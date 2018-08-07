@@ -46,21 +46,19 @@ defmodule ARP.Init do
           allowance = ARP.Contract.allowance(addr)
 
           if allowance == 0 || allowance < amount do
-            {:ok, _} =
-              ARP.Contract.approve(
-                private_key,
-                approve * round(1.0e18)
-              )
+            ARP.Contract.approve(
+              private_key,
+              approve * round(1.0e18)
+            )
           end
 
-          {:ok, _} =
-            ARP.Contract.register(
-              private_key,
-              ip_to_integer(ip),
-              port,
-              capacity,
-              amount * round(1.0e18)
-            )
+          ARP.Contract.register(
+            private_key,
+            ip_to_integer(ip),
+            port,
+            capacity,
+            amount * round(1.0e18)
+          )
         end
 
         IO.puts(:stdio, "arp server is running!")
