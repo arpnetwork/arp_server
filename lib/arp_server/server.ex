@@ -1,4 +1,4 @@
-defmodule ARP.API.JSONRPC2.Server do
+defmodule ARP.Server do
   @moduledoc false
 
   def info do

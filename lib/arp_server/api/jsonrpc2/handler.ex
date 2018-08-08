@@ -9,8 +9,7 @@ defmodule ARP.API.JSONRPC2.Handler do
   defp parse(method) do
     [module, fun] = String.split(method, "_")
 
-    mods = Module.split(__MODULE__) |> List.delete_at(-1)
-    module = Module.safe_concat(mods ++ [String.capitalize(module)])
+    module = Module.safe_concat([ARP, String.capitalize(module)])
 
     fun = Macro.underscore(fun) |> String.to_existing_atom()
 
