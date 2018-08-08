@@ -7,7 +7,7 @@ defmodule ARP.Application do
     children = [
       ARP.API.TCP.Store,
       ARP.Account,
-      ARP.DeviceManager,
+      ARP.Device,
       ARP.DeviceNetSpeed,
       :ranch.child_spec(
         :tcp_device,

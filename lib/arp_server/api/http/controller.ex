@@ -5,13 +5,13 @@ defmodule ARP.API.HTTP.Controller do
 
   alias ARP.API.HTTP.{Error, Response}
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.DeviceManager
+  alias ARP.Device
 
   @doc """
   Response the usable devices's attributes.
   """
   def selection(conn) do
-    Response.render_success(conn, DeviceManager.selection())
+    Response.render_success(conn, Device.selection())
   end
 
   @doc """
@@ -31,7 +31,7 @@ defmodule ARP.API.HTTP.Controller do
              into: %{},
              do: {key |> Macro.underscore() |> String.to_existing_atom(), val}
            ),
-         {:ok, dev} <- ARP.DeviceManager.request(filters, user_id),
+         {:ok, dev} <- ARP.Device.request(filters, user_id),
          :ok <- DeviceProtocol.user_request(dev.id, session, ip) do
       Response.render_success(conn, %{
         id: user_id,

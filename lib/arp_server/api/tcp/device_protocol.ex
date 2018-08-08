@@ -85,7 +85,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     # Delete device info
     addr = device_addr()
     Store.delete(addr)
-    ARP.DeviceManager.offline(addr)
+    ARP.Device.offline(addr)
   end
 
   @doc """
@@ -247,7 +247,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         device = struct(ARP.Device, data)
         device = struct(device, %{ip: get_ip(socket), address: device_addr})
 
-        case ARP.DeviceManager.online(device) do
+        case ARP.Device.online(device) do
           {:ok, _} ->
             online_resp(socket, @cmd_result_success)
 
@@ -265,7 +265,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   # defp idle() do
   #   addr = device_addr()
-  #   ARP.DeviceManager.idle(addr)
+  #   ARP.Device.idle(addr)
   # end
 
   # Send online respone to device

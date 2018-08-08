@@ -3,7 +3,7 @@ defmodule ARP.DeviceNetSpeed do
   Record the net speed for ip.
   """
 
-  alias ARP.DeviceManager
+  alias ARP.Device
 
   use GenServer
 
@@ -167,14 +167,14 @@ defmodule ARP.DeviceNetSpeed do
     {:noreply, new_state}
   end
 
-  # Notify DeviceManager to update device net speed.
+  # Notify Device to update device net speed.
   defp update_device(device_ids, up, down) do
     l = length(device_ids)
 
     if l > 0 do
       avg_up = round(up / l)
       avg_down = round(down / l)
-      DeviceManager.update_net_speed(device_ids, avg_up, avg_down)
+      Device.update_net_speed(device_ids, avg_up, avg_down)
     end
   end
 
