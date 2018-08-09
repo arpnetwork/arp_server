@@ -5,7 +5,7 @@ defmodule ARP.Application do
 
   def start(_type, _args) do
     jsonrpc2_opts = [
-      modules: []
+      modules: [ARP.API.JSONRPC2.Server]
     ]
 
     children = [
