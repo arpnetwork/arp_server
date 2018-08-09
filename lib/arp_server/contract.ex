@@ -155,6 +155,33 @@ defmodule ARP.Contract do
   end
 
   @doc """
+  Get dapp locked arp for server.
+  """
+  @spec get_dapp_locked_arp(String.t(), String.t()) :: map()
+  def get_dapp_locked_arp(dapp_address, server_address) do
+    dapp_address = dapp_address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    server_address = server_address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    abi_encoded_data =
+      ABI.encode("appOf(address,address)", [dapp_address, server_address])
+      |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> abi_encoded_data,
+      to: @registry_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    <<amount::size(256), expired::size(256)>> = res
+
+    %{
+      amount: amount,
+      expired: expired
+    }
+  end
+
+  @doc """
   Transfer arp to some one.
   """
   def transfer_arp(
