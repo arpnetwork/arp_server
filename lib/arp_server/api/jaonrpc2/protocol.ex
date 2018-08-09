@@ -12,15 +12,12 @@ defmodule ARP.API.JSONRPC2.Protocol do
          :ok <- Nonce.check_and_update_nonce(address, decoded_nonce) do
       {:ok, address}
     else
-      {:error, reason} when is_binary(reason) ->
-        {:invalid_params, reason}
-
       {:error, reason} when is_atom(reason) ->
         msg = Atom.to_string(reason) |> String.capitalize() |> String.replace("_", " ")
-        {:invalid_params, msg}
+        {:error, msg}
 
       _ ->
-        :invalid_params
+        {:error, "Invalid sign"}
     end
   end
 
@@ -42,7 +39,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
   end
 
   def response(data, nonce, to_addr, private_key) when is_map(data) do
-    data = %{data | nonce: nonce}
+    data = Map.put(data, :nonce, nonce)
     data_sign = data |> encode_sign_msg(to_addr) |> Crypto.eth_sign(private_key)
     {:ok, Map.put(data, :sign, data_sign)}
   end
