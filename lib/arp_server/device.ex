@@ -17,6 +17,7 @@ defmodule ARP.Device do
 
   defstruct [
     :address,
+    :price,
     :ip,
     :port,
     :state,
