@@ -46,7 +46,7 @@ defmodule ARP.Crypto do
   """
   @spec eth_sign(String.t(), String.t()) :: String.t()
   def eth_sign(msg, private_key) do
-    hash = msg_hash(msg)
+    hash = keccak256(msg)
 
     {:ok, rs, v} =
       :libsecp256k1.ecdsa_sign_compact(
@@ -64,7 +64,7 @@ defmodule ARP.Crypto do
   return: :ok / :error
   """
   def eth_verify(msg, sign, public_key) do
-    hash = msg_hash(msg)
+    hash = keccak256(msg)
 
     :libsecp256k1.ecdsa_verify_compact(
       hash,
