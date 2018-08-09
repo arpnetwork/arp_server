@@ -3,6 +3,9 @@ defmodule ARP.Device do
   Record online device.
   """
 
+  alias ARP.Account
+  alias ARP.API.TCP.DeviceProtocol
+  alias ARP.Contract
   alias ARP.DeviceNetSpeed
 
   use GenServer
@@ -52,8 +55,32 @@ defmodule ARP.Device do
     GenServer.call(__MODULE__, :selection)
   end
 
-  def request(filters, dapp_address) when is_map(filters) and is_binary(dapp_address) do
-    GenServer.call(__MODULE__, {:request, filters, dapp_address})
+  def request(dapp_address, price, ip, port) do
+    # recover msg and sign to addr
+    {:ok, self_info} = Account.get_info()
+
+    # check locked arp is enough
+    with %{amount: locked_arp} when locked_arp > price <-
+           Contract.get_dapp_locked_arp(dapp_address, self_info.addr),
+         # find device
+         {:ok, dev} <- GenServer.call(__MODULE__, {:request, %{price: price}, dapp_address}),
+         # prepare device
+         :ok <- DeviceProtocol.user_request(self_info.addr, dapp_address, ip, port) do
+      %{
+        address: dev.address,
+        ip: dev.ip,
+        port: dev.port
+      }
+    else
+      %{amount: _} ->
+        {:error, :no_enough_locked_arp}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      _ ->
+        :error
+    end
   end
 
   def idle(address) do
@@ -156,23 +183,23 @@ defmodule ARP.Device do
     {:noreply, devices}
   end
 
-  def is_pending?(device) do
+  defp is_pending?(device) do
     device.state == @pending
   end
 
-  def is_idle?(device) do
+  defp is_idle?(device) do
     device.state == @idle
   end
 
-  def set_pending(device) do
+  defp set_pending(device) do
     %{device | state: @pending}
   end
 
-  def set_idle(device) do
+  defp set_idle(device) do
     %{device | state: @idle, dapp_address: nil}
   end
 
-  def set_allocating(device, dapp_address) do
+  defp set_allocating(device, dapp_address) do
     if device.state == @idle do
       {:ok, %{device | state: @allocating, dapp_address: dapp_address}}
     else
@@ -180,10 +207,8 @@ defmodule ARP.Device do
     end
   end
 
-  @doc """
-  Detect whether the device matches the filters
-  """
-  def match(device, filters) do
+  # Detect whether the device matches the filters
+  defp match(device, filters) do
     res =
       Enum.reject(filters, fn {key, value} ->
         if blank?(value) do
@@ -203,11 +228,9 @@ defmodule ARP.Device do
     Enum.empty?(res)
   end
 
-  @doc """
-  Return field map with value list for user selection.
-  Only free device can be selected.
-  """
-  def select_fields(devices) when is_list(devices) do
+  # Return field map with value list for user selection.
+  # Only idle device can be selected.
+  defp select_fields(devices) when is_list(devices) do
     fields = [:cpu, :ram, :gpu, :upload_speed, :download_speed]
 
     res =
@@ -226,13 +249,13 @@ defmodule ARP.Device do
     end
   end
 
-  def blank?(value) when is_binary(value) do
+  defp blank?(value) when is_binary(value) do
     byte_size(value) == 0
   end
 
-  def blank?(value) when is_integer(value) do
+  defp blank?(value) when is_integer(value) do
     value == 0
   end
 
-  def blank?(nil), do: true
+  defp blank?(nil), do: true
 end

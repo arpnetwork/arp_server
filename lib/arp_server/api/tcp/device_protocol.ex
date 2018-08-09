@@ -49,15 +49,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc """
   Send user request msg to device
   """
-  def user_request(id, session, user_ip) do
-    pid = Store.get(id)
-    Process.send(pid, {:user_request, session, user_ip}, [])
+  def user_request(addr, dapp_address, ip, port) do
+    pid = Store.get(addr)
+    Process.send(pid, {:user_request, dapp_address, ip, port}, [])
   end
-
-  # def user_request(addr, dapp_address, ip, port) do
-  #   pid = Store.get(addr)
-  #   Process.send(pid, {:user_request, dapp_address, ip, port}, [])
-  # end
 
   @doc """
   Send download speed test msg to device
