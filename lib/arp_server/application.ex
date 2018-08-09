@@ -4,6 +4,10 @@ defmodule ARP.Application do
   use Application
 
   def start(_type, _args) do
+    jsonrpc2_opts = [
+      modules: []
+    ]
+
     children = [
       ARP.API.TCP.Store,
       ARP.Account,
@@ -19,12 +23,10 @@ defmodule ARP.Application do
       ),
       Plug.Adapters.Cowboy2.child_spec(
         scheme: :http,
-        plug: {JSONRPC2.Servers.HTTP.Plug, ARP.API.JSONRPC2.Handler},
-        options: [
-          port: 4040,
-          ref: ARP.API.JSONRPC2.Handler.HTTP
-        ]
-      )
+        plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
+        options: [port: 4040]
+      ),
+      ARP.API.JSONRPC2.Nonce
     ]
 
     opts = [strategy: :one_for_one, name: ARP.Supervisor]
