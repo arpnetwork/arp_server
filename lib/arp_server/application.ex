@@ -3,6 +3,9 @@ defmodule ARP.Application do
 
   use Application
 
+  @tcp_port Application.get_env(:arp_server, :port)
+  @jsonrpc_port @tcp_port + 1
+
   def start(_type, _args) do
     jsonrpc2_opts = [
       modules: [ARP.API.JSONRPC2.Server, ARP.API.JSONRPC2.Device]
@@ -17,14 +20,14 @@ defmodule ARP.Application do
         :tcp_device,
         50,
         :ranch_tcp,
-        [port: 8000],
+        [port: @tcp_port],
         ARP.API.TCP.DeviceProtocol,
         []
       ),
       Plug.Adapters.Cowboy2.child_spec(
         scheme: :http,
         plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
-        options: [port: 4040]
+        options: [port: @jsonrpc_port]
       ),
       ARP.API.JSONRPC2.Nonce
     ]
