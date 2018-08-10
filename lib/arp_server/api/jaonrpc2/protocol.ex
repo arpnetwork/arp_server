@@ -47,7 +47,8 @@ defmodule ARP.API.JSONRPC2.Protocol do
   # Encode params for JSONRPC2 request sign.
   defp encode_sign_msg(method, params, nonce, to_addr)
        when is_binary(method) and is_list(params) and is_binary(to_addr) do
-    "#{method}:#{Enum.join(params, ":")}:#{nonce}:#{to_addr}"
+    params =  String.downcase("#{Enum.join(params, ":")}:#{nonce}:#{to_addr}")
+    "#{method}:#{params}"
   end
 
   # Encode params for JSONRPC2 response sign.
@@ -57,6 +58,6 @@ defmodule ARP.API.JSONRPC2.Protocol do
       |> Enum.sort(fn {k1, _}, {k2, _} -> k1 < k2 end)
       |> Enum.map_join(":", fn {_, v} -> v end)
 
-    "#{encoded_params}:#{to_addr}"
+    String.downcase("#{encoded_params}:#{to_addr}")
   end
 end

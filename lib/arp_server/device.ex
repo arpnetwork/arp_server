@@ -44,6 +44,10 @@ defmodule ARP.Device do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  def all() do
+    GenServer.call(__MODULE__, :all)
+  end
+
   def online(%{address: address} = device) when is_binary(address) and byte_size(address) > 0 do
     GenServer.call(__MODULE__, {:online, device})
   end
@@ -66,7 +70,7 @@ defmodule ARP.Device do
          # find device
          {:ok, dev} <- GenServer.call(__MODULE__, {:request, %{price: price}, dapp_address}),
          # prepare device
-         :ok <- DeviceProtocol.user_request(self_info.addr, dapp_address, ip, port) do
+         :ok <- DeviceProtocol.user_request(dev.address, dapp_address, ip, port) do
       %{
         address: dev.address,
         ip: dev.ip,
@@ -110,6 +114,10 @@ defmodule ARP.Device do
 
   def init(_opts) do
     {:ok, %{}}
+  end
+
+  def handle_call(:all, _from, devices) do
+    {:reply, devices, devices}
   end
 
   def handle_call({:online, device}, _from, devices) do

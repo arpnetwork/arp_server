@@ -81,7 +81,7 @@ defmodule ARP.Crypto do
   def eth_recover(msg, sign) do
     {v, _r, _s} = decode_sign(sign)
     recovery_id = v - @base_recovery_id
-    hash = msg_hash(msg)
+    hash = keccak256(msg)
 
     case :libsecp256k1.ecdsa_recover_compact(
            hash,
