@@ -19,4 +19,16 @@ defmodule ARP.API.JSONRPC2.Device do
         Protocol.response(err)
     end
   end
+
+  def release(address, nonce, sign) do
+    {:ok, self_info} = Account.get_info()
+
+    with {:ok, dapp_address} <- Protocol.verify(method(), [address], nonce, sign, self_info.addr),
+         {:ok, _} <- ARP.Device.release(address, dapp_address) do
+      Protocol.response(%{}, nonce, dapp_address, self_info.private_key)
+    else
+      err ->
+        Protocol.response(err)
+    end
+  end
 end

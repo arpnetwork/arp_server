@@ -84,6 +84,11 @@ defmodule ARP.Device do
     end
   end
 
+  def release(address, dapp_address) do
+    # TODO notify device to release
+    GenServer.call(__MODULE__, {:release, address, dapp_address})
+  end
+
   def idle(address) do
     GenServer.call(__MODULE__, {:idle, address})
   end
@@ -149,6 +154,17 @@ defmodule ARP.Device do
     end
   end
 
+  def handle_call({:release, address, dapp_address}, _from, devices) do
+    with {:ok, dev} <- Map.fetch(devices, address),
+         ^dapp_address <- dev.dapp_address do
+      dev = set_idle(dev)
+      {:reply, {:ok, dev}, Map.put(devices, dev.address, dev)}
+    else
+      _ ->
+        {:reply, {:error, :device_not_found}, devices}
+    end
+  end
+
   def handle_call({:idle, address}, _from, devices) do
     case Map.fetch(devices, address) do
       {:ok, dev} ->
@@ -156,7 +172,7 @@ defmodule ARP.Device do
         {:reply, {:ok, dev}, Map.put(devices, dev.address, dev)}
 
       :error ->
-        {:reply, {:error, :not_found}, devices}
+        {:reply, {:error, :device_not_found}, devices}
     end
   end
 
