@@ -18,7 +18,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_online_resp 4
   @cmd_dl_speed_notify 5
   @cmd_alloc_request 6
-  # @cmd_alloc_end_notify 7
+  @cmd_alloc_end_notify 7
 
   @cmd_result_success 0
   @cmd_result_ver_err -1
@@ -60,6 +60,14 @@ defmodule ARP.API.TCP.DeviceProtocol do
   def speed_test(addr) do
     pid = Store.get(addr)
     Process.send(pid, :speed_test, [])
+  end
+
+  @doc """
+  Send alloc end notify to device
+  """
+  def alloc_end(addr, dapp_address) do
+    pid = Store.get(addr)
+    Process.send(pid, {:alloc_end, dapp_address}, [])
   end
 
   @doc false
@@ -192,6 +200,18 @@ defmodule ARP.API.TCP.DeviceProtocol do
         address: dapp_address,
         ip: ip,
         port: port
+      }
+    }
+    |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:alloc_end, dapp_address}, %{socket: socket} = state) do
+    %{
+      id: @cmd_alloc_end_notify,
+      data: %{
+        address: dapp_address
       }
     }
     |> send_resp(socket)

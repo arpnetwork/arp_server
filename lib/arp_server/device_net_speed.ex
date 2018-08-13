@@ -52,8 +52,8 @@ defmodule ARP.DeviceNetSpeed do
   Start an interval timer to check whether the net_speed of ip is expired.
   """
   def init(_opts) do
-    bandwidth = System.get_env("BANDWIDTH") || "100"
-    max_testing = (String.to_integer(bandwidth) / 100) |> round() |> max(1)
+    bandwidth = Application.get_env(:arp_server, :bandwidth, 100)
+    max_testing = (bandwidth / 100) |> round() |> max(1)
 
     Process.send_after(__MODULE__, :interval, @interval)
 

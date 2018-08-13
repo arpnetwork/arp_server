@@ -164,7 +164,8 @@ defmodule ARP.Device do
 
   def handle_call({:release, address, dapp_address}, _from, devices) do
     with {:ok, dev} <- Map.fetch(devices, address),
-         ^dapp_address <- dev.dapp_address do
+         ^dapp_address <- dev.dapp_address,
+         :ok = DeviceProtocol.alloc_end(address, dapp_address) do
       dev = set_idle(dev)
       {:reply, {:ok, dev}, Map.put(devices, dev.address, dev)}
     else
