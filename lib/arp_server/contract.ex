@@ -6,6 +6,7 @@ defmodule ARP.Contract do
   @chain_id Application.get_env(:arp_server, :chain_id)
   @token_contract Application.get_env(:arp_server, :token_contract_address)
   @registry_contract Application.get_env(:arp_server, :registry_contract_address)
+  @bank_contract Application.get_env(:arp_server, :bank_contract_address)
 
   @default_gas_price 41_000_000_000
   @default_gas_limit 200_000
@@ -47,7 +48,7 @@ defmodule ARP.Contract do
   @spec allowance(String.t()) :: integer()
   def allowance(owner) do
     owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    spender = @registry_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    spender = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
     abi_encoded_data =
       ABI.encode("allowance(address,address)", [owner, spender]) |> Base.encode16(case: :lower)
@@ -72,7 +73,7 @@ defmodule ARP.Contract do
         gas_price \\ @default_gas_price,
         gas_limit \\ @default_gas_limit
       ) do
-    address = @registry_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    address = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("approve(address,uint256)", [address, value])
 
     send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
@@ -81,19 +82,14 @@ defmodule ARP.Contract do
   @doc """
   Register miner.
   """
-  @spec register(String.t(), integer(), integer(), integer(), integer(), integer(), integer()) ::
-          {:ok, String.t()} | {:error, term()}
   def register(
         private_key,
         ip,
         port,
-        capacity,
-        amount,
         gas_price \\ @default_gas_price,
         gas_limit \\ @default_gas_limit
       ) do
-    encoded_abi =
-      ABI.encode("register(uint32,uint16,uint256,uint256)", [ip, port, capacity, amount])
+    encoded_abi = ABI.encode("registerServer(uint32,uint16)", [ip, port])
 
     send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
@@ -114,16 +110,13 @@ defmodule ARP.Contract do
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
-    <<ip::size(256), port::size(256), capacity::size(256), amount::size(256), expired::size(256),
-      deviceCount::size(256)>> = res
+    <<ip::size(256), port::size(256), size::size(256), expired::size(256)>> = res
 
     %{
       ip: ip,
       port: port,
-      capacity: capacity,
-      amount: amount,
-      expired: expired,
-      deviceCount: deviceCount
+      size: size,
+      expired: expired
     }
   end
 
@@ -179,6 +172,41 @@ defmodule ARP.Contract do
       amount: amount,
       expired: expired
     }
+  end
+
+  def bank_deposit(
+        private_key,
+        value,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    encoded_abi = ABI.encode("deposit(uint256)", [value])
+
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  def bank_approve(
+        private_key,
+        spender,
+        amount,
+        expired,
+        proxy \\ 0,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    proxy =
+      if proxy != 0 do
+        proxy |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+      else
+        proxy
+      end
+
+    encoded_abi =
+      ABI.encode("approve(address, uint256, uint256, address)", [spender, amount, expired, proxy])
+
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
 
   @doc """

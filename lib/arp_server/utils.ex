@@ -26,4 +26,16 @@ defmodule ARP.Utils do
     |> Base.decode16!(case: :mixed)
     |> :binary.decode_unsigned(:big)
   end
+
+  def ip_to_integer(ip) do
+    [head | tail] = String.split(ip, ".")
+    first = String.to_integer(head) * 256 * 256 * 256
+    [head | tail] = tail
+    second = String.to_integer(head) * 256 * 256
+    [head | tail] = tail
+    third = String.to_integer(head) * 256
+    [head | _] = tail
+    fourth = String.to_integer(head)
+    first + second + third + fourth
+  end
 end

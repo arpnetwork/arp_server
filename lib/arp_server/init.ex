@@ -5,7 +5,7 @@ defmodule ARP.Init do
 
   def init do
     # import keystore file
-    keystore_dir = Path.expand("~/.arp_server")
+    keystore_dir = System.user_home() |> Path.join("/.arp_server")
     all_env = Application.get_all_env(:arp_server)
 
     path =
@@ -29,40 +29,52 @@ defmodule ARP.Init do
       eth_balance = ARP.Contract.get_eth_balance(addr)
       arp_balance = ARP.Contract.get_arp_balance(addr)
 
-      ip = Keyword.get(all_env, :ip)
+      ip = Keyword.get(all_env, :ip) |> ARP.Utils.ip_to_integer()
       port = Keyword.get(all_env, :port)
       approve = Keyword.get(all_env, :approve)
-      capacity = Keyword.get(all_env, :capacity)
-      amount = capacity * 100 + 100_000
+      bank = 200_000 * round(1.0e18)
+      amount = 100_000 * round(1.0e18)
 
       # balance check
-      if eth_balance < 1 * round(1.0e18) || arp_balance < 100_000 * round(1.0e18) do
-        IO.puts("balance is not enough!")
+      if eth_balance < 1 * round(1.0e18) do
+        IO.puts("eth balance is not enough!")
         :error
       else
         map = ARP.Contract.get_registered_info(addr)
 
         if map.ip == 0 do
-          allowance = ARP.Contract.allowance(addr)
+          unless arp_balance < bank do
+            allowance = ARP.Contract.allowance(addr)
 
-          if allowance == 0 || allowance < amount do
-            ARP.Contract.approve(
-              private_key,
-              approve * round(1.0e18)
-            )
+            IO.puts("server is registering, please wait!")
+
+            if allowance == 0 || allowance < amount do
+              ARP.Contract.approve(
+                private_key,
+                approve
+              )
+            end
+
+            spender = Application.get_env(:arp_server, :registry_contract_address)
+
+            with {:ok, _} <- ARP.Contract.bank_deposit(private_key, bank),
+                 {:ok, _} <- ARP.Contract.bank_approve(private_key, spender, amount, 0),
+                 {:ok, _} <- ARP.Contract.register(private_key, ip, port) do
+              IO.puts(:stdio, "arp server is running!")
+              :ok
+            else
+              _ ->
+                IO.puts("register server error!")
+                :error
+            end
+          else
+            IO.puts("arp balance is not enough!")
+            :error
           end
-
-          ARP.Contract.register(
-            private_key,
-            ip_to_integer(ip),
-            port,
-            capacity,
-            amount * round(1.0e18)
-          )
+        else
+          IO.puts(:stdio, "arp server is running!")
+          :ok
         end
-
-        IO.puts(:stdio, "arp server is running!")
-        :ok
       end
     else
       IO.puts("keystore file invalid or password error!")
@@ -85,17 +97,5 @@ defmodule ARP.Init do
         :ok = File.mkdir(keystore_dir)
         :error
     end
-  end
-
-  defp ip_to_integer(ip) do
-    [head | tail] = String.split(ip, ".")
-    first = String.to_integer(head) * 256 * 256 * 256
-    [head | tail] = tail
-    second = String.to_integer(head) * 256 * 256
-    [head | tail] = tail
-    third = String.to_integer(head) * 256
-    [head | _] = tail
-    fourth = String.to_integer(head)
-    first + second + third + fourth
   end
 end
