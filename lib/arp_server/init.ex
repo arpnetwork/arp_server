@@ -3,6 +3,8 @@ defmodule ARP.Init do
   Initialize server
   """
 
+  alias ARP.Contract
+
   def init do
     # import keystore file
     keystore_dir = System.user_home() |> Path.join("/.arp_server")
@@ -16,7 +18,7 @@ defmodule ARP.Init do
         :error ->
           src = Keyword.get(all_env, :keystore_file)
 
-          file_name = Path.basename(src)
+          file_name = "keystore"
           des_path = Path.join(keystore_dir, file_name)
           :ok = src |> Path.expand() |> File.cp(des_path)
           des_path
@@ -26,8 +28,8 @@ defmodule ARP.Init do
 
     if ARP.Account.init_key(path, auth) == :ok do
       {:ok, %{addr: addr, private_key: private_key}} = ARP.Account.get_info()
-      eth_balance = ARP.Contract.get_eth_balance(addr)
-      arp_balance = ARP.Contract.get_arp_balance(addr)
+      eth_balance = Contract.get_eth_balance(addr)
+      arp_balance = Contract.get_arp_balance(addr)
 
       ip = Keyword.get(all_env, :ip) |> ARP.Utils.ip_to_integer()
       port = Keyword.get(all_env, :port)
@@ -40,16 +42,16 @@ defmodule ARP.Init do
         IO.puts("eth balance is not enough!")
         :error
       else
-        map = ARP.Contract.get_registered_info(addr)
+        map = Contract.get_registered_info(addr)
 
         if map.ip == 0 do
           unless arp_balance < bank do
-            allowance = ARP.Contract.allowance(addr)
+            allowance = Contract.allowance(addr)
 
             IO.puts("server is registering, please wait!")
 
             if allowance == 0 || allowance < amount do
-              ARP.Contract.approve(
+              Contract.approve(
                 private_key,
                 approve
               )
@@ -57,9 +59,10 @@ defmodule ARP.Init do
 
             spender = Application.get_env(:arp_server, :registry_contract_address)
 
-            with {:ok, _} <- ARP.Contract.bank_deposit(private_key, bank),
-                 {:ok, _} <- ARP.Contract.bank_approve(private_key, spender, amount, 0),
-                 {:ok, _} <- ARP.Contract.register(private_key, ip, port) do
+            with {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, bank),
+                 {:ok, %{"status" => "0x1"}} <-
+                   Contract.bank_approve(private_key, spender, amount, 0),
+                 {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, ip, port) do
               IO.puts(:stdio, "arp server is running!")
               :ok
             else
@@ -83,19 +86,17 @@ defmodule ARP.Init do
   end
 
   defp check_keystore(keystore_dir) do
-    with true <- File.exists?(keystore_dir), {:ok, list} <- File.ls(keystore_dir) do
-      first = List.first(list)
+    file_name = "keystore"
+    file_path = Path.join(keystore_dir, file_name)
 
-      if first != nil do
-        file_path = Path.join(keystore_dir, first)
-        {:ok, file_path}
-      else
-        :error
-      end
+    if !File.exists?(keystore_dir) do
+      :ok = File.mkdir(keystore_dir)
+    end
+
+    if File.exists?(file_path) do
+      {:ok, file_path}
     else
-      _ ->
-        :ok = File.mkdir(keystore_dir)
-        :error
+      :error
     end
   end
 end
