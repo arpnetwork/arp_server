@@ -66,7 +66,7 @@ defmodule ARP.Device do
 
     # check locked arp is enough
     with %{amount: locked_arp} when locked_arp > price <-
-           Contract.get_dapp_locked_arp(dapp_address, self_info.addr),
+           Contract.bank_allowance(dapp_address, self_info.addr),
          # find device
          {:ok, dev} <- GenServer.call(__MODULE__, {:request, %{price: price}, dapp_address}),
          # prepare device

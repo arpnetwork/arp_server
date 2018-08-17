@@ -27,6 +27,14 @@ defmodule ARP.Utils do
     |> :binary.decode_unsigned(:big)
   end
 
+  @doc """
+  Encode integer to hex string
+  """
+  def encode_integer(int) do
+    hex = :binary.encode_unsigned(int) |> Base.encode16(case: :lower)
+    "0x" <> hex
+  end
+
   def ip_to_integer(ip) do
     [head | tail] = String.split(ip, ".")
     first = String.to_integer(head) * 256 * 256 * 256

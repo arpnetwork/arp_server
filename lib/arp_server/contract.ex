@@ -95,6 +95,15 @@ defmodule ARP.Contract do
   end
 
   @doc """
+  Unregister miner.
+  """
+  def unregister(private_key, gas_price \\ @default_gas_price, gas_limit \\ @default_gas_limit) do
+    encoded_abi = ABI.encode("unregisterServer()", [])
+
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  @doc """
   Get registed info.
   """
   @spec get_registered_info(String.t()) :: map()
@@ -126,7 +135,8 @@ defmodule ARP.Contract do
   @spec get_device_bind_info(String.t()) :: map()
   def get_device_bind_info(address) do
     address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    encoded_abi = ABI.encode("devices(address)", [address]) |> Base.encode16(case: :lower)
+    address = (<<0>> |> :binary.copy(32 - byte_size(address))) <> address
+    encoded_abi = ABI.encode("bindings(bytes32)", [address]) |> Base.encode16(case: :lower)
 
     params = %{
       data: "0x" <> encoded_abi,
@@ -136,42 +146,26 @@ defmodule ARP.Contract do
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
-    <<server::binary-size(32), amount::size(256), expired::size(256)>> = res
+    <<server::binary-size(32), expired::size(256)>> = res
 
     server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
 
     %{
       server: "0x" <> server,
-      amount: amount,
       expired: expired
     }
   end
 
-  @doc """
-  Get dapp locked arp for server.
-  """
-  @spec get_dapp_locked_arp(String.t(), String.t()) :: map()
-  def get_dapp_locked_arp(dapp_address, server_address) do
-    dapp_address = dapp_address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    server_address = server_address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-
-    abi_encoded_data =
-      ABI.encode("appOf(address,address)", [dapp_address, server_address])
-      |> Base.encode16(case: :lower)
+  def get_device_holding() do
+    encoded_abi = ABI.encode("DEVICE_HOLDING()", []) |> Base.encode16(case: :lower)
 
     params = %{
-      data: "0x" <> abi_encoded_data,
+      data: "0x" <> encoded_abi,
       to: @registry_contract
     }
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    <<amount::size(256), expired::size(256)>> = res
-
-    %{
-      amount: amount,
-      expired: expired
-    }
+    hex_string_to_integer(res)
   end
 
   def bank_deposit(
@@ -207,6 +201,35 @@ defmodule ARP.Contract do
       ABI.encode("approve(address, uint256, uint256, address)", [spender, amount, expired, proxy])
 
     send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  def bank_allowance(owner, spender \\ @registry_contract) do
+    owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    abi_encoded_data =
+      ABI.encode("allowance(address,address)", [owner, spender]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> abi_encoded_data,
+      to: @bank_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    <<id::size(256), amount::size(256), paid::size(256), expired::size(256),
+      proxy::binary-size(32)>> = res
+
+    proxy = proxy |> binary_part(12, byte_size(proxy) - 12) |> Base.encode16(case: :lower)
+
+    %{
+      id: id,
+      amount: amount,
+      paid: paid,
+      expired: expired,
+      proxy: "0x" <> proxy
+    }
   end
 
   @doc """
