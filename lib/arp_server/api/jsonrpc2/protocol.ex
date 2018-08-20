@@ -21,6 +21,24 @@ defmodule ARP.API.JSONRPC2.Protocol do
     end
   end
 
+  def sign(method, params, nonce, to_addr, private_key) do
+    msg = encode_sign_msg(method, params, nonce, to_addr)
+    Crypto.eth_sign(msg, private_key)
+  end
+
+  def verify_resp_sign(result, self_addr, device_addr) do
+    sign = result["sign"]
+    data = Map.delete(result, "sign")
+    data_sign = encode_sign_msg(data, self_addr)
+    {:ok, address} = Crypto.eth_recover(data_sign, sign)
+
+    if address == device_addr do
+      true
+    else
+      false
+    end
+  end
+
   def response({:error, msg}) do
     new_msg =
       if is_atom(msg) do

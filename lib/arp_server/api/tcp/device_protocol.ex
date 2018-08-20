@@ -49,9 +49,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc """
   Send user request msg to device
   """
-  def user_request(addr, dapp_address, ip, port) do
+  def user_request(addr, dapp_address, ip, port, price) do
     pid = Store.get(addr)
-    Process.send(pid, {:user_request, dapp_address, ip, port}, [])
+    Process.send(pid, {:user_request, dapp_address, ip, port, price}, [])
   end
 
   @doc """
@@ -193,13 +193,14 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:noreply, state}
   end
 
-  def handle_info({:user_request, dapp_address, ip, port}, %{socket: socket} = state) do
+  def handle_info({:user_request, dapp_address, ip, port, price}, %{socket: socket} = state) do
     %{
       id: @cmd_alloc_request,
       data: %{
         address: dapp_address,
         ip: ip,
-        port: port
+        port: port,
+        price: price
       }
     }
     |> send_resp(socket)
@@ -259,8 +260,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       !Store.has_key?(device_addr) ->
         Store.put(device_addr, self())
+        {:ok, %{addr: addr}} = ARP.Account.get_info()
+        %{id: id} = ARP.Contract.bank_allowance(addr, device_addr)
         device = struct(ARP.Device, data)
-        device = struct(device, %{ip: get_ip(socket), address: device_addr})
+        device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})
 
         case ARP.Device.online(device) do
           {:ok, _} ->

@@ -8,7 +8,7 @@ defmodule ARP.Application do
 
   def start(_type, _args) do
     jsonrpc2_opts = [
-      modules: [ARP.API.JSONRPC2.Server, ARP.API.JSONRPC2.Device]
+      modules: [ARP.API.JSONRPC2.Server, ARP.API.JSONRPC2.Device, ARP.API.JSONRPC2.Account]
     ]
 
     children = [
@@ -16,6 +16,9 @@ defmodule ARP.Application do
       ARP.Account,
       ARP.Device,
       ARP.DeviceNetSpeed,
+      ARP.Nonce,
+      ARP.DappPromise,
+      ARP.DevicePromise,
       :ranch.child_spec(
         :tcp_device,
         50,

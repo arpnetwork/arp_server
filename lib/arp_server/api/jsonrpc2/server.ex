@@ -4,8 +4,8 @@ defmodule ARP.API.JSONRPC2.Server do
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Crypto, Utils}
 
-  def info() do
-    Protocol.response(ARP.Server.info())
+  def info(nonce) do
+    Protocol.response(ARP.Server.info(nonce))
   end
 
   def voucher(spender, nonce) do

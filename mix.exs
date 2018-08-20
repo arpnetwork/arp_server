@@ -17,7 +17,7 @@ defmodule ARP.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :os_mon, :ethereumex, :cowboy, :plug],
+      extra_applications: [:logger, :os_mon, :ethereumex, :cowboy, :plug, :hackney],
       mod: {ARP.Application, []}
     ]
   end
@@ -29,6 +29,7 @@ defmodule ARP.MixProject do
       {:cowboy, "~> 2.4"},
       {:plug, "~> 1.6"},
       {:jsonrpc2, git: "https://github.com/arpnetwork/jsonrpc2_ex.git"},
+      {:hackney, "~> 1.13"},
       {:elixir_uuid, "~> 1.2"},
       {:libsecp256k1,
        github: "exthereum/libsecp256k1",

@@ -37,7 +37,8 @@ defmodule ARP.Device do
     :telephony,
     :upload_speed,
     :download_speed,
-    :ver
+    :ver,
+    :cid
   ]
 
   def start_link(_opts) do
@@ -65,12 +66,11 @@ defmodule ARP.Device do
     {:ok, self_info} = Account.get_info()
 
     # check locked arp is enough
-    with %{amount: locked_arp} when locked_arp > price <-
-           Contract.bank_allowance(dapp_address, self_info.addr),
+    with true <- check_dapp(dapp_address, self_info.addr),
          # find device
          {:ok, dev} <- GenServer.call(__MODULE__, {:request, %{price: price}, dapp_address}),
          # prepare device
-         :ok <- DeviceProtocol.user_request(dev.address, dapp_address, ip, port) do
+         :ok <- DeviceProtocol.user_request(dev.address, dapp_address, ip, port, price) do
       %{
         address: dev.address,
         ip: dev.ip,
@@ -284,4 +284,19 @@ defmodule ARP.Device do
   end
 
   defp blank?(nil), do: true
+
+  defp check_dapp(dapp_addr, server_addr) do
+    bind_info = Contract.get_dapp_bind_info(dapp_addr, server_addr)
+    approve_info = Contract.bank_allowance(dapp_addr, server_addr)
+    registry_addr = Application.get_env(:arp_server, :registry_contract_address)
+
+    # TODO: save approve info
+
+    if bind_info.server != server_addr || approve_info.proxy != registry_addr do
+      # TODO: clean approve info
+      false
+    else
+      true
+    end
+  end
 end

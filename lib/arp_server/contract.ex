@@ -156,6 +156,31 @@ defmodule ARP.Contract do
     }
   end
 
+  def get_dapp_bind_info(dapp_addr, server_addr) do
+    dapp_addr = dapp_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    server_addr = server_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    data = Crypto.keccak256(dapp_addr <> server_addr)
+
+    encoded_abi = ABI.encode("bindings(bytes32)", [data]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> encoded_abi,
+      to: @registry_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    <<server::binary-size(32), expired::size(256)>> = res
+
+    server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
+
+    %{
+      server: "0x" <> server,
+      expired: expired
+    }
+  end
+
   def get_device_holding() do
     encoded_abi = ABI.encode("DEVICE_HOLDING()", []) |> Base.encode16(case: :lower)
 
