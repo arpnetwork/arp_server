@@ -22,7 +22,7 @@ defmodule ARP.API.JSONRPC2.Server do
 
     if (server_info.expired == 0 || server_info.expired > check_time) &&
          bind_info.server == empty_addr && approve_info.amount >= device_hold do
-      amount = 100 * round(1.0e18)
+      amount = Application.get_env(:arp_server, :amount)
       sign_expired = (DateTime.utc_now() |> DateTime.to_unix()) + 60 * 60 * 4
       expired = 0
 

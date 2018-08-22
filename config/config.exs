@@ -9,4 +9,5 @@ config :arp_server,
   ip: "192.168.0.159",
   port: 8000,
   approve: 600_000 * round(1.0e18),
+  amount: 100 * round(1.0e18),
   divide_rate: 0.05

@@ -2,7 +2,7 @@ defmodule ARP.API.JSONRPC2.Account do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Account, Utils, Crypto, DappPromise, DevicePromise}
+  alias ARP.{Account, Utils, Crypto, DappPromise, DevicePromise, Contract}
 
   @divide_rate Application.get_env(:arp_server, :divide_rate)
 
@@ -11,7 +11,8 @@ defmodule ARP.API.JSONRPC2.Account do
 
     with {:ok, dapp_addr} <- Protocol.verify(method(), [promise, device_addr], nonce, sign, addr),
          {:ok, promise} <- Poison.decode(promise),
-         true <- check_promise(promise, dapp_addr) do
+         true <- check_promise(promise, dapp_addr),
+         true <- check_dapp_amount(promise["amount"] |> Utils.decode_hex(), dapp_addr, addr) do
       # save promise
       cid = promise["cid"] |> Utils.decode_hex()
       amount = promise["amount"] |> Utils.decode_hex()
@@ -78,6 +79,16 @@ defmodule ARP.API.JSONRPC2.Account do
     {:ok, recover_addr} = Crypto.eth_recover(encode, sign)
 
     if recover_addr == dapp_addr do
+      true
+    else
+      false
+    end
+  end
+
+  defp check_dapp_amount(promise_amount, dapp_addr, server_addr) do
+    %{amount: amount} = Contract.bank_allowance(dapp_addr, server_addr)
+
+    if promise_amount <= amount do
       true
     else
       false

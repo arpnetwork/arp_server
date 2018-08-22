@@ -38,8 +38,6 @@ defmodule ARP.DappPromise do
   end
 
   defp save_promise_to_file(key, value) do
-    IO.inspect(key, label: "key")
-    IO.inspect(value, label: "value")
     file_path = System.user_home() |> Path.join("/.arp_server/dapp_promise")
     file_data = read_promise_file(file_path)
 

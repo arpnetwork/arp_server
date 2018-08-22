@@ -289,10 +289,12 @@ defmodule ARP.Device do
     bind_info = Contract.get_dapp_bind_info(dapp_addr, server_addr)
     approve_info = Contract.bank_allowance(dapp_addr, server_addr)
     registry_addr = Application.get_env(:arp_server, :registry_contract_address)
+    now = DateTime.utc_now() |> DateTime.to_unix()
 
     # TODO: save approve info
 
-    if bind_info.server != server_addr || approve_info.proxy != registry_addr do
+    if bind_info.server != server_addr || approve_info.proxy != registry_addr ||
+         (approve_info.expired != 0 && approve_info.expired < now) do
       # TODO: clean approve info
       false
     else

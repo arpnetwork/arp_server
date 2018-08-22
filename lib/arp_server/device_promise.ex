@@ -79,7 +79,6 @@ defmodule ARP.DevicePromise do
         :ok
 
       {:error, error} ->
-        IO.inspect(error, label: "account_pay resp")
         {:error, error}
     end
   end
