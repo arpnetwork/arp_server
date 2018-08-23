@@ -257,6 +257,22 @@ defmodule ARP.Contract do
     }
   end
 
+  def bank_increase_approval(
+        private_key,
+        spender,
+        value,
+        expired,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    encoded_abi =
+      ABI.encode("increaseApproval(address, uint256, uint256)", [spender, value, expired])
+
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
   @doc """
   Transfer arp to some one.
   """

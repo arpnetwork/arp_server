@@ -46,8 +46,34 @@ defmodule ARP.API.JSONRPC2.Account do
 
         # save device promise
         if device_amount > last_device_amount do
-          value = %{"cid" => device_cid, "amount" => device_amount}
-          :ok = DevicePromise.set(device_addr, value)
+          approval_time =
+            if data["approval_time"] == nil do
+              0
+            else
+              data["approval_time"]
+            end
+
+          info = %{
+            "cid" => device_cid,
+            "amount" => device_amount,
+            "approval_time" => approval_time
+          }
+
+          %{amount: current_amount, expired: expired} = Contract.bank_allowance(addr, device_addr)
+
+          approval_amount = Application.get_env(:arp_server, :amount)
+          now = DateTime.utc_now() |> DateTime.to_unix()
+
+          if device_amount > round(current_amount * 0.8) && now - approval_time > 60 do
+            Task.start(fn ->
+              Contract.bank_increase_approval(private_key, device_addr, approval_amount, expired)
+            end)
+
+            info = Map.put(info, "approval_time", now)
+            :ok = DevicePromise.set(device_addr, info)
+          else
+            :ok = DevicePromise.set(device_addr, info)
+          end
         end
 
         # calc device promise
