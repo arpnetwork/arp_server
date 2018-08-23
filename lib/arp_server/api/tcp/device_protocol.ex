@@ -16,9 +16,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_device_verify_resp 2
   @cmd_online 3
   @cmd_online_resp 4
-  @cmd_dl_speed_notify 5
+  @cmd_dl_speed_report 5
   @cmd_alloc_request 6
   @cmd_alloc_end_notify 7
+  @cmd_device_use_end_report 8
+  @cmd_speed_notify 9
 
   @cmd_result_success 0
   @cmd_result_ver_err -1
@@ -150,7 +152,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
     {:ok, data} = :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @timeout)
     <<@protocol_type_data, data::binary>> = data
-    %{id: @cmd_dl_speed_notify, data: %{hash: hash}} = Poison.decode!(data, keys: :atoms!)
+    %{id: @cmd_dl_speed_report, data: %{hash: hash}} = Poison.decode!(data, keys: :atoms!)
 
     if hash == calc_hash do
       dl_end_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
@@ -186,6 +188,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
       ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
 
       :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
+
+      speed_notify(socket, ul_speed, dl_speed)
     else
       transport.close(socket)
     end
@@ -281,10 +285,16 @@ defmodule ARP.API.TCP.DeviceProtocol do
     state
   end
 
-  # defp idle() do
-  #   addr = device_addr()
-  #   ARP.Device.idle(addr)
-  # end
+  # Device use end report
+  defp handle_command(@cmd_device_use_end_report, _data, _socket, state) do
+    idle()
+    state
+  end
+
+  defp idle() do
+    addr = device_addr()
+    ARP.Device.idle(addr)
+  end
 
   # Send online respone to device
   defp online_resp(socket, result) do
@@ -312,6 +322,18 @@ defmodule ARP.API.TCP.DeviceProtocol do
       result: result,
       data: %{
         sign: sign
+      }
+    }
+
+    send_resp(data, socket)
+  end
+
+  defp speed_notify(socket, upload_speed, download_speed) do
+    data = %{
+      id: @cmd_speed_notify,
+      data: %{
+        upload_speed: upload_speed,
+        download_speed: download_speed
       }
     }
 
