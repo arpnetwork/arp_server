@@ -7,6 +7,7 @@ defmodule ARP.Contract do
   @token_contract Application.get_env(:arp_server, :token_contract_address)
   @registry_contract Application.get_env(:arp_server, :registry_contract_address)
   @bank_contract Application.get_env(:arp_server, :bank_contract_address)
+  @first_registry_block Application.get_env(:arp_server, :first_registry_block)
 
   @default_gas_price 41_000_000_000
   @default_gas_limit 200_000
@@ -193,6 +194,19 @@ defmodule ARP.Contract do
     hex_string_to_integer(res)
   end
 
+  def unbind_device_by_server(
+        private_key,
+        device_addr,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    device_addr = device_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    encoded_abi = ABI.encode("unbindDeviceByServer(address)", [device_addr])
+
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
   def bank_deposit(
         private_key,
         value,
@@ -271,6 +285,59 @@ defmodule ARP.Contract do
       ABI.encode("increaseApproval(address, uint256, uint256)", [spender, value, expired])
 
     send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  def bank_cash(
+        private_key,
+        from,
+        amount,
+        sign,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    from = from |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    <<r::binary-size(32), s::binary-size(32), v::size(8)>> = sign |> Base.decode16!(case: :mixed)
+
+    encoded_abi =
+      ABI.encode("cash(address, uint256, uint8, bytes32, bytes32)", [from, amount, v, r, s])
+
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  def get_bound_device(address) do
+    bind_topic =
+      "0x" <> Base.encode16(Crypto.keccak256("DeviceBound(address,address)"), case: :lower)
+
+    unbind_topic =
+      "0x" <> Base.encode16(Crypto.keccak256("DeviceUnbound(address,address)"), case: :lower)
+
+    encoded_address = String.replace_prefix(address, "0x", "0x000000000000000000000000")
+
+    params = %{
+      fromBlock: @first_registry_block,
+      toBlock: "latest",
+      address: @registry_contract,
+      topics: [[bind_topic, unbind_topic], nil, encoded_address]
+    }
+
+    {:ok, id} = Ethereumex.HttpClient.eth_new_filter(params)
+    {:ok, logs} = Ethereumex.HttpClient.eth_get_filter_logs(id)
+    Ethereumex.HttpClient.eth_uninstall_filter(id)
+
+    Enum.reduce(logs, [], fn item, acc ->
+      if item["removed"] == false do
+        [topic, device, _] = item["topics"]
+        device = String.replace_prefix(device, "0x000000000000000000000000", "0x")
+
+        if topic == bind_topic do
+          [device | acc]
+        else
+          List.delete(acc, device)
+        end
+      else
+        acc
+      end
+    end)
   end
 
   @doc """

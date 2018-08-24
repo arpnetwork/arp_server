@@ -32,7 +32,8 @@ defmodule ARP.Application do
         plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
         options: [port: @jsonrpc_port]
       ),
-      ARP.API.JSONRPC2.Nonce
+      ARP.API.JSONRPC2.Nonce,
+      ARP.CheckTask
     ]
 
     opts = [strategy: :one_for_one, name: ARP.Supervisor]
