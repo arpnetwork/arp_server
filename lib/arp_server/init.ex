@@ -85,6 +85,35 @@ defmodule ARP.Init do
     end
   end
 
+  def unregister do
+    {:ok, %{private_key: private_key, addr: server_addr}} = ARP.Account.get_info()
+    now = DateTime.utc_now() |> DateTime.to_unix()
+
+    server_info = Contract.get_registered_info(server_addr)
+
+    cond do
+      server_info.ip != 0 && server_info.expired == 0 ->
+        {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
+
+        # dapp
+        info = ARP.DappPromise.get_all()
+        Enum.each(info, fn {k, v} -> check_dapp_bind(k, v, private_key, server_addr) end)
+
+        # device
+        device_list = Contract.get_bound_device(server_addr)
+
+        Enum.each(device_list, fn device_addr ->
+          check_device_bind(device_addr, private_key, server_addr)
+        end)
+
+      server_info.ip != 0 && server_info.expired != 0 && now > server_info.expired ->
+        {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
+
+      true ->
+        :ok
+    end
+  end
+
   defp check_keystore(keystore_dir) do
     file_name = "keystore"
     file_path = Path.join(keystore_dir, file_name)
@@ -97,6 +126,25 @@ defmodule ARP.Init do
       {:ok, file_path}
     else
       :error
+    end
+  end
+
+  defp check_dapp_bind(dapp_addr, info, private_key, server_addr) do
+    %{id: cid, paid: paid} = Contract.bank_allowance(dapp_addr, server_addr)
+
+    if info["cid"] == cid && info["amount"] > paid do
+      {:ok, %{"status" => "0x1"}} =
+        Contract.bank_cash(private_key, dapp_addr, server_addr, info["amount"], info["sign"])
+    end
+
+    {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
+  end
+
+  defp check_device_bind(device_addr, private_key, server_addr) do
+    %{server: server, expired: expired} = Contract.get_device_bind_info(device_addr)
+
+    if server == server_addr && expired == 0 do
+      {:ok, %{"status" => "0x1"}} = Contract.unbind_device_by_server(private_key, device_addr)
     end
   end
 end

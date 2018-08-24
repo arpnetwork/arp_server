@@ -33,7 +33,7 @@ defmodule ARP.CheckTask do
 
     if info["cid"] == cid && info["amount"] > paid && expired != 0 && expired < check_time do
       Task.start(fn ->
-        ARP.Contract.bank_cash(private_key, dapp_addr, info["amount"], info["sign"])
+        ARP.Contract.bank_cash(private_key, dapp_addr, server_addr, info["amount"], info["sign"])
       end)
     end
   end

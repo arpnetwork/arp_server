@@ -207,6 +207,19 @@ defmodule ARP.Contract do
     send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
 
+  def unbind_app_by_server(
+        private_key,
+        dapp_addr,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    dapp_addr = dapp_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    encoded_abi = ABI.encode("unbindAppByServer(address)", [dapp_addr])
+
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
   def bank_deposit(
         private_key,
         value,
@@ -289,17 +302,26 @@ defmodule ARP.Contract do
 
   def bank_cash(
         private_key,
-        from,
+        owner,
+        spender,
         amount,
         sign,
         gas_price \\ @default_gas_price,
         gas_limit \\ @default_gas_limit
       ) do
-    from = from |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     <<r::binary-size(32), s::binary-size(32), v::size(8)>> = sign |> Base.decode16!(case: :mixed)
 
     encoded_abi =
-      ABI.encode("cash(address, uint256, uint8, bytes32, bytes32)", [from, amount, v, r, s])
+      ABI.encode("cash(address, address, uint256, uint8, bytes32, bytes32)", [
+        owner,
+        spender,
+        amount,
+        v,
+        r,
+        s
+      ])
 
     send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
