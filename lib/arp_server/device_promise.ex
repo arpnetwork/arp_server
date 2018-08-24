@@ -1,6 +1,8 @@
 defmodule ARP.DevicePromise do
   use GenServer
 
+  @file_path System.user_home() |> Path.join("/.arp_server/device_promise")
+
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
   alias ARP.Account
@@ -19,6 +21,10 @@ defmodule ARP.DevicePromise do
 
   def set(device_addr, value) do
     GenServer.call(__MODULE__, {:set, device_addr, value})
+  end
+
+  def delete(device_addr) do
+    GenServer.call(__MODULE__, {:delete, device_addr})
   end
 
   # Callbacks
@@ -41,16 +47,29 @@ defmodule ARP.DevicePromise do
     {:reply, :ok, Map.put(state, device_addr, value)}
   end
 
+  def handle_call({:delete, device_addr}, _from, state) do
+    delete_promise_to_file(device_addr)
+    {:reply, :ok, Map.delete(state, device_addr)}
+  end
+
   defp save_promise_to_file(key, value) do
-    file_path = System.user_home() |> Path.join("/.arp_server/device_promise")
+    file_path = @file_path
     file_data = read_promise_file(file_path)
 
     encode_data = Map.put(file_data, key, value) |> Poison.encode!()
     File.write(file_path, encode_data)
   end
 
+  defp delete_promise_to_file(key) do
+    file_path = @file_path
+    file_data = read_promise_file(file_path)
+
+    encode_data = Map.delete(file_data, key) |> Poison.encode!()
+    File.write(file_path, encode_data)
+  end
+
   defp init_promise() do
-    file_path = System.user_home() |> Path.join("/.arp_server/device_promise")
+    file_path = @file_path
     read_promise_file(file_path)
   end
 

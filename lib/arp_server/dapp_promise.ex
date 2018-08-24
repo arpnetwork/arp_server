@@ -1,6 +1,8 @@
 defmodule ARP.DappPromise do
   use GenServer
 
+  @file_path System.user_home() |> Path.join("/.arp_server/dapp_promise")
+
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
@@ -15,6 +17,10 @@ defmodule ARP.DappPromise do
 
   def set(dapp_addr, value) do
     GenServer.call(__MODULE__, {:set, dapp_addr, value})
+  end
+
+  def delete(dapp_addr) do
+    GenServer.call(__MODULE__, {:delete, dapp_addr})
   end
 
   # Callbacks
@@ -37,16 +43,29 @@ defmodule ARP.DappPromise do
     {:reply, :ok, Map.put(state, dapp_addr, value)}
   end
 
+  def handle_call({:delete, dapp_addr}, _from, state) do
+    delete_promise_to_file(dapp_addr)
+    {:reply, :ok, Map.delete(state, dapp_addr)}
+  end
+
   defp save_promise_to_file(key, value) do
-    file_path = System.user_home() |> Path.join("/.arp_server/dapp_promise")
+    file_path = @file_path
     file_data = read_promise_file(file_path)
 
     encode_data = Map.put(file_data, key, value) |> Poison.encode!()
     File.write(file_path, encode_data)
   end
 
+  defp delete_promise_to_file(key) do
+    file_path = @file_path
+    file_data = read_promise_file(file_path)
+
+    encode_data = Map.delete(file_data, key) |> Poison.encode!()
+    File.write(file_path, encode_data)
+  end
+
   defp init_promise() do
-    file_path = System.user_home() |> Path.join("/.arp_server/dapp_promise")
+    file_path = @file_path
     read_promise_file(file_path)
   end
 

@@ -45,6 +45,7 @@ defmodule ARP.CheckTask do
 
     if server == server_addr && expired != 0 && expired < now do
       Task.start(fn -> ARP.Contract.unbind_device_by_server(private_key, device_addr) end)
+      ARP.DevicePromise.delete(device_addr)
     end
   end
 end

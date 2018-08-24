@@ -138,6 +138,7 @@ defmodule ARP.Init do
     end
 
     {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
+    ARP.DappPromise.delete(dapp_addr)
   end
 
   defp check_device_bind(device_addr, private_key, server_addr) do
