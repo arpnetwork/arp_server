@@ -4,11 +4,11 @@ defmodule ARP.API.JSONRPC2.Server do
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Crypto, Utils}
 
-  def info(nonce) do
-    Protocol.response(ARP.Server.info(nonce))
+  def info() do
+    Protocol.response(ARP.Server.info())
   end
 
-  def voucher(spender, nonce) do
+  def bind_promise(spender) do
     {:ok, %{private_key: private_key, addr: owner}} = ARP.Account.get_info()
 
     # check server expired whether to send voucher
@@ -38,15 +38,18 @@ defmodule ARP.API.JSONRPC2.Server do
         <<owner_binary::binary, spender_bianry::binary, amount::size(256), expired::size(256),
           msg_send_binary::binary, sign_expired::size(256)>>
 
-      sign = Crypto.eth_sign(encode, private_key)
+      promise_sign = Crypto.eth_sign(encode, private_key)
 
-      Protocol.response(%{
-        nonce: nonce,
-        amount: amount |> Utils.encode_integer(),
-        sign_expired: sign_expired,
-        expired: expired,
-        sign: "0x" <> sign
-      })
+      Protocol.response(
+        %{
+          amount: amount |> Utils.encode_integer(),
+          signExpired: sign_expired,
+          expired: expired,
+          promiseSign: "0x" <> promise_sign
+        },
+        spender,
+        private_key
+      )
     else
       Protocol.response({:error, "get voucher faild!"})
     end

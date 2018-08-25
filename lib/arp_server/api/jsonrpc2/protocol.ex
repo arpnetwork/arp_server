@@ -62,6 +62,11 @@ defmodule ARP.API.JSONRPC2.Protocol do
     {:ok, Map.put(data, :sign, data_sign)}
   end
 
+  def response(data, to_addr, private_key) when is_map(data) do
+    data_sign = data |> encode_sign_msg(to_addr) |> Crypto.eth_sign(private_key)
+    {:ok, Map.put(data, :sign, data_sign)}
+  end
+
   # Encode params for JSONRPC2 request sign.
   defp encode_sign_msg(method, params, nonce, to_addr)
        when is_binary(method) and is_list(params) and is_binary(to_addr) do
