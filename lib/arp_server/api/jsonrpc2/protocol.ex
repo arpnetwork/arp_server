@@ -21,6 +21,22 @@ defmodule ARP.API.JSONRPC2.Protocol do
     end
   end
 
+  def verify(method, params, sign, self_addr) do
+    msg = encode_sign_msg(method, params, self_addr)
+
+    with <<_::binary-size(130)>> <- sign,
+         {:ok, address} <- Crypto.eth_recover(msg, sign) do
+      {:ok, address}
+    else
+      {:error, reason} when is_atom(reason) ->
+        msg = Atom.to_string(reason) |> String.capitalize() |> String.replace("_", " ")
+        {:error, msg}
+
+      _ ->
+        {:error, "Invalid sign"}
+    end
+  end
+
   def sign(method, params, nonce, to_addr, private_key) do
     msg = encode_sign_msg(method, params, nonce, to_addr)
     Crypto.eth_sign(msg, private_key)
@@ -71,6 +87,11 @@ defmodule ARP.API.JSONRPC2.Protocol do
   defp encode_sign_msg(method, params, nonce, to_addr)
        when is_binary(method) and is_list(params) and is_binary(to_addr) do
     "#{method}:#{Enum.join(params, ":")}:#{nonce}:#{to_addr}"
+  end
+
+  defp encode_sign_msg(method, params, to_addr)
+       when is_binary(method) and is_list(params) and is_binary(to_addr) do
+    "#{method}:#{Enum.join(params, ":")}:#{to_addr}"
   end
 
   # Encode params for JSONRPC2 response sign.

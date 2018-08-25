@@ -93,6 +93,34 @@ defmodule ARP.API.JSONRPC2.Account do
     end
   end
 
+  def last(cid, sign) do
+    decode_cid = Utils.decode_hex(cid)
+
+    with {:ok, %{private_key: private_key, addr: addr}} <- Account.get_info(),
+         {:ok, dapp_addr} <- Protocol.verify(method(), [cid], sign, addr) do
+      info = ARP.DappPromise.get(dapp_addr)
+
+      if info == nil || info["cid"] != decode_cid do
+        Protocol.response({:error, "Promise not found!"})
+      else
+        promise =
+          %{
+            cid: cid,
+            from: dapp_addr,
+            to: addr,
+            amount: Utils.encode_integer(info["amount"]),
+            sign: info["sign"]
+          }
+          |> Poison.encode!()
+
+        Protocol.response(%{promise: promise}, dapp_addr, private_key)
+      end
+    else
+      _ ->
+        Protocol.response({:error, "get last promise error!"})
+    end
+  end
+
   defp check_promise(promise, dapp_addr) do
     cid = promise["cid"] |> Utils.decode_hex()
     from_binary = promise["from"] |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
