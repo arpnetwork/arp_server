@@ -246,6 +246,7 @@ defmodule ARP.Device do
             :ram -> device.ram >= value
             :upload_speed -> device.upload_speed >= value
             :download_speed -> device.download_speed >= value
+            :price -> device.price <= value
             _ -> true
           end
         end
