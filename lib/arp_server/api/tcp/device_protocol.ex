@@ -252,6 +252,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp handle_command(@cmd_online, data, socket, state) do
     ver = data[:ver]
     device_addr = Map.get(state, :device_addr)
+    {:ok, {ip, _}} = :ranch_tcp.peername(socket)
 
     cond do
       !device_addr ->
@@ -260,6 +261,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       !Enum.member?(@compatible_ver, ver) ->
         online_resp(socket, @cmd_result_ver_err)
+        state.transport.close(socket)
+
+      :error == ARP.Device.check_port(ip, data[:port], data[:port] + 1) ->
+        online_resp(socket, @cmd_result_verify_err)
         state.transport.close(socket)
 
       !Store.has_key?(device_addr) ->

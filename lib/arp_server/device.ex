@@ -45,6 +45,24 @@ defmodule ARP.Device do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  def check_port(ip, tcp_port, http_port) do
+    ip_str = ip |> Tuple.to_list() |> Enum.join(".")
+
+    with {:ok, socket} <- :gen_tcp.connect(ip, tcp_port, [active: false], 5000),
+         {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
+         :gen_tcp.close(socket),
+         {:ok, _} <- JSONRPC2.Client.HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []) do
+      :ok
+    else
+      {{_, _}, socket} ->
+        :gen_tcp.close(socket)
+        :error
+
+      _ ->
+        :error
+    end
+  end
+
   def all() do
     GenServer.call(__MODULE__, :all)
   end
