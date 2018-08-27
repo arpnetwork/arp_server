@@ -25,10 +25,8 @@ defmodule ARP.Account do
     {:ok, %{private_key: nil, public_key: nil, addr: nil}}
   end
 
-  def handle_call({:init_key, path, auth}, _from, state) do
-    with {:ok, file} <- File.read(path),
-         {:ok, file_map} <- file |> String.downcase() |> Poison.decode(keys: :atoms),
-         {:ok, private_key} <- Crypto.decrypt_keystore(file_map, auth) do
+  def handle_call({:init_key, keystore, auth}, _from, state) do
+    with {:ok, private_key} <- Crypto.decrypt_keystore(keystore, auth) do
       public_key = ARP.Crypto.eth_privkey_to_pubkey(private_key)
       addr = ARP.Crypto.get_eth_addr(public_key)
       {:reply, :ok, %{state | private_key: private_key, public_key: public_key, addr: addr}}

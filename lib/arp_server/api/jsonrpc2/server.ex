@@ -2,7 +2,7 @@ defmodule ARP.API.JSONRPC2.Server do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Crypto, Utils}
+  alias ARP.{Config, Crypto, Utils}
 
   def info() do
     Protocol.response(ARP.Server.info())
@@ -22,7 +22,7 @@ defmodule ARP.API.JSONRPC2.Server do
 
     if (server_info.expired == 0 || server_info.expired > check_time) &&
          bind_info.server == empty_addr && approve_info.amount >= device_hold do
-      amount = Application.get_env(:arp_server, :amount)
+      amount = Config.get(:amount)
       sign_expired = (DateTime.utc_now() |> DateTime.to_unix()) + 60 * 60 * 4
       expired = 0
 

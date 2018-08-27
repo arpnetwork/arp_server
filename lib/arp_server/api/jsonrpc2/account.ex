@@ -2,9 +2,7 @@ defmodule ARP.API.JSONRPC2.Account do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Account, Utils, Crypto, DappPromise, DevicePromise, Contract}
-
-  @divide_rate Application.get_env(:arp_server, :divide_rate)
+  alias ARP.{Account, Config, Utils, Crypto, DappPromise, DevicePromise, Contract}
 
   def pay(promise, device_addr, nonce, sign) do
     {:ok, %{private_key: private_key, addr: addr}} = Account.get_info()
@@ -61,7 +59,7 @@ defmodule ARP.API.JSONRPC2.Account do
 
           %{amount: current_amount, expired: expired} = Contract.bank_allowance(addr, device_addr)
 
-          approval_amount = Application.get_env(:arp_server, :amount)
+          approval_amount = Config.get(:amount)
           now = DateTime.utc_now() |> DateTime.to_unix()
 
           if device_amount > round(current_amount * 0.8) && now - approval_time > 60 do
@@ -150,7 +148,7 @@ defmodule ARP.API.JSONRPC2.Account do
   end
 
   defp calc_device_amount(amount, last_amount, last) do
-    rate = @divide_rate
+    rate = Config.get(:divide_rate)
     add = round((amount - last_amount) * (1 - rate))
     last + add
   end

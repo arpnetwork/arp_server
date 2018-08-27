@@ -7,7 +7,7 @@ defmodule ARP.Server do
     %{
       name: info.addr || "",
       country: "",
-      bandwidth: Application.get_env(:arp_server, :bandwidth),
+      bandwidth: ARP.Config.get(:bandwidth),
       load: ARP.System.load()[:cpu]
     }
   end

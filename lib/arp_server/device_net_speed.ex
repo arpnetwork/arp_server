@@ -3,7 +3,7 @@ defmodule ARP.DeviceNetSpeed do
   Record the net speed for ip.
   """
 
-  alias ARP.Device
+  alias ARP.{Config, Device}
 
   use GenServer
 
@@ -52,7 +52,7 @@ defmodule ARP.DeviceNetSpeed do
   Start an interval timer to check whether the net_speed of ip is expired.
   """
   def init(_opts) do
-    bandwidth = Application.get_env(:arp_server, :bandwidth, 100)
+    bandwidth = Config.get(:bandwidth)
     max_testing = (bandwidth / 100) |> round() |> max(1)
 
     Process.send_after(__MODULE__, :interval, @interval)

@@ -12,6 +12,7 @@ defmodule ARP.Application do
     ]
 
     children = [
+      ARP.Config,
       ARP.API.TCP.Store,
       ARP.Account,
       ARP.Device,

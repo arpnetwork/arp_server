@@ -3,37 +3,28 @@ defmodule ARP.Init do
   Initialize server
   """
 
-  alias ARP.Contract
+  alias ARP.{Config, Contract}
 
   def init do
+    data_path = Config.get(:data_dir)
+
+    unless File.exists?(data_path) do
+      File.mkdir_p!(data_path)
+    end
+
     # import keystore file
-    keystore_dir = System.user_home() |> Path.join("/.arp_server")
-    all_env = Application.get_all_env(:arp_server)
-
-    path =
-      case check_keystore(keystore_dir) do
-        {:ok, file_path} ->
-          file_path
-
-        :error ->
-          src = Keyword.get(all_env, :keystore_file)
-
-          file_name = "keystore"
-          des_path = Path.join(keystore_dir, file_name)
-          :ok = src |> Path.expand() |> File.cp(des_path)
-          des_path
-      end
+    keystore = read_keystore(Config.get(:keystore_file)) || Config.get_keystore()
 
     auth = ExPrompt.password("input your keystore password:") |> String.trim_trailing("\n")
 
-    if ARP.Account.init_key(path, auth) == :ok do
+    if ARP.Account.init_key(keystore, auth) == :ok do
       {:ok, %{addr: addr, private_key: private_key}} = ARP.Account.get_info()
       eth_balance = Contract.get_eth_balance(addr)
       arp_balance = Contract.get_arp_balance(addr)
 
-      ip = Keyword.get(all_env, :ip) |> ARP.Utils.ip_to_integer()
-      port = Keyword.get(all_env, :port)
-      approve = Keyword.get(all_env, :approve)
+      ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
+      port = Config.get(:port)
+      approve = Config.get(:approve)
       bank = 200_000 * round(1.0e18)
       amount = 100_000 * round(1.0e18)
 
@@ -114,18 +105,14 @@ defmodule ARP.Init do
     end
   end
 
-  defp check_keystore(keystore_dir) do
-    file_name = "keystore"
-    file_path = Path.join(keystore_dir, file_name)
-
-    if !File.exists?(keystore_dir) do
-      :ok = File.mkdir(keystore_dir)
-    end
-
-    if File.exists?(file_path) do
-      {:ok, file_path}
+  defp read_keystore(keystore_filepath) do
+    with true <- is_binary(keystore_filepath),
+         {:ok, file} <- File.read(keystore_filepath),
+         {:ok, file_map} <- file |> String.downcase() |> Poison.decode(keys: :atoms) do
+      file_map
     else
-      :error
+      _ ->
+        nil
     end
   end
 
