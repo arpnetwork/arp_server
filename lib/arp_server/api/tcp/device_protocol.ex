@@ -228,6 +228,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp handle_command(@cmd_device_verify, data, socket, state) do
     salt = data[:salt]
     sign = data[:sign]
+    promise = data[:promise]
 
     {:ok, device_addr} = Crypto.eth_recover(salt, sign)
 
@@ -241,6 +242,35 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       send_sign = Crypto.eth_sign(salt, private_key)
       device_verify_resp(socket, @cmd_result_success, send_sign)
+
+      # check promise
+      if promise != nil do
+        promise = Poison.decode!(promise, keys: :atoms!)
+        cid = ARP.Utils.decode_hex(promise[:cid])
+        amount = ARP.Utils.decode_hex(promise[:amount])
+
+        result =
+          check_recover_promise(
+            cid,
+            addr,
+            device_addr,
+            amount,
+            promise[:sign]
+          )
+
+        if result do
+          info = ARP.DevicePromise.get(device_addr)
+
+          if info["cid"] == nil || (cid == info["cid"] && amount > info["amount"]) do
+            ARP.DevicePromise.set(device_addr, %{
+              "cid" => cid,
+              "amount" => amount,
+              "approval_time" => 0
+            })
+          end
+        end
+      end
+
       state
     else
       device_verify_resp(socket, @cmd_result_verify_err)
@@ -389,6 +419,23 @@ defmodule ARP.API.TCP.DeviceProtocol do
       size < @speed_test_packet_len ->
         {:ok, _data} = :ranch_tcp.recv(socket, size, @timeout)
         speed_test_recv_loop(socket, 0)
+    end
+  end
+
+  defp check_recover_promise(cid, server_addr, device_addr, amount, sign) do
+    decode_server_addr = server_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    decode_device_addr = device_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    data =
+      <<cid::size(256), decode_server_addr::binary-size(20), decode_device_addr::binary-size(20),
+        amount::size(256)>>
+
+    {:ok, addr} = Crypto.eth_recover(data, sign)
+
+    if addr == server_addr do
+      true
+    else
+      false
     end
   end
 end
