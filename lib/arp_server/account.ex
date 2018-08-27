@@ -3,7 +3,9 @@ defmodule ARP.Account do
   Manage server account
   """
 
-  alias ARP.Crypto
+  alias ARP.{Config, Crypto}
+
+  require Logger
 
   use GenServer
 
@@ -27,8 +29,12 @@ defmodule ARP.Account do
 
   def handle_call({:init_key, keystore, auth}, _from, state) do
     with {:ok, private_key} <- Crypto.decrypt_keystore(keystore, auth) do
+      Config.set_keystore(keystore)
       public_key = ARP.Crypto.eth_privkey_to_pubkey(private_key)
       addr = ARP.Crypto.get_eth_addr(public_key)
+
+      Logger.info("use address #{addr}")
+
       {:reply, :ok, %{state | private_key: private_key, public_key: public_key, addr: addr}}
     else
       _ ->

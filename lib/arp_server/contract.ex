@@ -66,8 +66,6 @@ defmodule ARP.Contract do
   @doc """
   Approve to registry contract.
   """
-  @spec approve(String.t(), integer(), integer(), integer()) ::
-          {:ok, String.t()} | {:error, term()}
   def approve(
         private_key,
         value,

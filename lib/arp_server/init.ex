@@ -5,6 +5,8 @@ defmodule ARP.Init do
 
   alias ARP.{Config, Contract}
 
+  require Logger
+
   def init do
     data_path = Config.get(:data_dir)
 
@@ -19,59 +21,44 @@ defmodule ARP.Init do
 
     if ARP.Account.init_key(keystore, auth) == :ok do
       {:ok, %{addr: addr, private_key: private_key}} = ARP.Account.get_info()
-      eth_balance = Contract.get_eth_balance(addr)
-      arp_balance = Contract.get_arp_balance(addr)
 
-      ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
+      base_deposit = Config.get(:base_deposit)
+
+      config_ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
       port = Config.get(:port)
-      approve = Config.get(:approve)
-      bank = 200_000 * round(1.0e18)
-      amount = 100_000 * round(1.0e18)
+      deposit = Config.get(:deposit)
+      spender = Application.get_env(:arp_server, :registry_contract_address)
 
-      # balance check
-      if eth_balance < 1 * round(1.0e18) do
-        IO.puts("eth balance is not enough!")
-        :error
+      with %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
+           Logger.info("registering..."),
+           :ok <- check_eth_balance(addr),
+           :ok <- check_arp_balance(addr),
+           {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
+           {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, deposit),
+           {:ok, %{"status" => "0x1"}} <-
+             Contract.bank_approve(private_key, spender, base_deposit, 0),
+           {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
+        Logger.info("arp server is running!")
+        :ok
       else
-        map = Contract.get_registered_info(addr)
-
-        if map.ip == 0 do
-          unless arp_balance < bank do
-            allowance = Contract.allowance(addr)
-
-            IO.puts("server is registering, please wait!")
-
-            if allowance == 0 || allowance < amount do
-              Contract.approve(
-                private_key,
-                approve
-              )
-            end
-
-            spender = Application.get_env(:arp_server, :registry_contract_address)
-
-            with {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, bank),
-                 {:ok, %{"status" => "0x1"}} <-
-                   Contract.bank_approve(private_key, spender, amount, 0),
-                 {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, ip, port) do
-              IO.puts(:stdio, "arp server is running!")
-              :ok
-            else
-              _ ->
-                IO.puts("register server error!")
-                :error
-            end
-          else
-            IO.puts("arp balance is not enough!")
-            :error
-          end
-        else
-          IO.puts(:stdio, "arp server is running!")
+        %{ip: ip} when ip != 0 ->
+          Logger.info("arp server is running!")
           :ok
-        end
+
+        {:ok, %{"status" => "0x0"}} ->
+          Logger.error("register failed!")
+          :error
+
+        {:error, e} ->
+          Logger.error(e)
+          :error
+
+        e ->
+          Logger.error(inspect(e))
+          :error
       end
     else
-      IO.puts("keystore file invalid or password error!")
+      Logger.error("keystore file invalid or password error!")
       :error
     end
   end
@@ -113,6 +100,26 @@ defmodule ARP.Init do
     else
       _ ->
         nil
+    end
+  end
+
+  defp check_eth_balance(address) do
+    eth_balance = Contract.get_eth_balance(address)
+
+    if eth_balance >= round(1.0e18) do
+      :ok
+    else
+      {:error, "eth balance is not enough!"}
+    end
+  end
+
+  defp check_arp_balance(address) do
+    arp_balance = Contract.get_arp_balance(address)
+
+    if arp_balance >= 5000 * round(1.0e18) do
+      :ok
+    else
+      {:error, "arp balance is not enough!"}
     end
   end
 
