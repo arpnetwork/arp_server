@@ -32,7 +32,7 @@ defmodule ARP.Init do
       with %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
            Logger.info("registering..."),
            :ok <- check_eth_balance(addr),
-           :ok <- check_arp_balance(addr),
+           :ok <- check_arp_balance(addr, deposit),
            {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
            {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, deposit),
            {:ok, %{"status" => "0x1"}} <-
@@ -113,10 +113,10 @@ defmodule ARP.Init do
     end
   end
 
-  defp check_arp_balance(address) do
+  defp check_arp_balance(address, amount) do
     arp_balance = Contract.get_arp_balance(address)
 
-    if arp_balance >= 5000 * round(1.0e18) do
+    if arp_balance >= amount do
       :ok
     else
       {:error, "arp balance is not enough!"}
