@@ -60,7 +60,7 @@ defmodule ARP.API.JSONRPC2.Account do
 
           %{amount: current_amount, expired: expired} = Contract.bank_allowance(addr, device_addr)
 
-          approval_amount = Config.get(:amount)
+          approval_amount = Config.get(:device_deposit)
           now = DateTime.utc_now() |> DateTime.to_unix()
 
           if device_amount > round(current_amount * 0.8) && now - approval_time > 60 do
