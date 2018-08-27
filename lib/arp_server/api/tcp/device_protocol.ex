@@ -4,7 +4,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   """
 
   alias ARP.API.TCP.Store
-  alias ARP.Crypto
+  alias ARP.{Account, Crypto}
 
   use GenServer
 
@@ -233,7 +233,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:ok, device_addr} = Crypto.eth_recover(salt, sign)
 
     # check device_addr valid
-    {:ok, %{private_key: private_key, addr: addr}} = ARP.Account.get_info()
+    private_key = Account.private_key()
+    addr = Account.address()
 
     device_bind = ARP.Contract.get_device_bind_info(device_addr)
 
@@ -299,7 +300,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       !Store.has_key?(device_addr) ->
         Store.put(device_addr, self())
-        {:ok, %{addr: addr}} = ARP.Account.get_info()
+        addr = Account.address()
         %{id: id} = ARP.Contract.bank_allowance(addr, device_addr)
         device = struct(ARP.Device, data)
         device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})

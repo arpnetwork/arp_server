@@ -9,7 +9,8 @@ defmodule ARP.CheckTask do
     loop_time = 1000 * 60 * 60
     Process.sleep(loop_time)
 
-    {:ok, %{private_key: private_key, addr: server_addr}} = ARP.Account.get_info()
+    private_key = ARP.Account.private_key()
+    server_addr = ARP.Account.address()
 
     # check dapp promise expired
     info = ARP.DappPromise.get_all()

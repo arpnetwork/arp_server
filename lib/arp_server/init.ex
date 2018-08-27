@@ -3,7 +3,7 @@ defmodule ARP.Init do
   Initialize server
   """
 
-  alias ARP.{Config, Contract}
+  alias ARP.{Account, Config, Contract}
 
   require Logger
 
@@ -14,57 +14,51 @@ defmodule ARP.Init do
       File.mkdir_p!(data_path)
     end
 
+    base_deposit = Config.get(:base_deposit)
+    config_ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
+    port = Config.get(:port)
+    deposit = Config.get(:deposit)
+    spender = Application.get_env(:arp_server, :registry_contract_address)
+
     # import keystore file
     keystore = read_keystore(Config.get(:keystore_file)) || Config.get_keystore()
 
     auth = ExPrompt.password("input your keystore password:") |> String.trim_trailing("\n")
 
-    if ARP.Account.init_key(keystore, auth) == :ok do
-      {:ok, %{addr: addr, private_key: private_key}} = ARP.Account.get_info()
-
-      base_deposit = Config.get(:base_deposit)
-
-      config_ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
-      port = Config.get(:port)
-      deposit = Config.get(:deposit)
-      spender = Application.get_env(:arp_server, :registry_contract_address)
-
-      with %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
-           Logger.info("registering..."),
-           :ok <- check_eth_balance(addr),
-           :ok <- check_arp_balance(addr, deposit),
-           {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
-           {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, deposit),
-           {:ok, %{"status" => "0x1"}} <-
-             Contract.bank_approve(private_key, spender, base_deposit, 0),
-           {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
+    with {:ok, %{private_key: private_key, address: addr}} <- Account.set_key(keystore, auth),
+         %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
+         Logger.info("registering..."),
+         :ok <- check_eth_balance(addr),
+         :ok <- check_arp_balance(addr, deposit),
+         {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
+         {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, deposit),
+         {:ok, %{"status" => "0x1"}} <-
+           Contract.bank_approve(private_key, spender, base_deposit, 0),
+         {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
+      Logger.info("arp server is running!")
+      :ok
+    else
+      %{ip: ip} when ip != 0 ->
         Logger.info("arp server is running!")
         :ok
-      else
-        %{ip: ip} when ip != 0 ->
-          Logger.info("arp server is running!")
-          :ok
 
-        {:ok, %{"status" => "0x0"}} ->
-          Logger.error("register failed!")
-          :error
+      {:ok, %{"status" => "0x0"}} ->
+        Logger.error("register failed!")
+        :error
 
-        {:error, e} ->
-          Logger.error(e)
-          :error
+      {:error, e} ->
+        Logger.error(e)
+        :error
 
-        e ->
-          Logger.error(inspect(e))
-          :error
-      end
-    else
-      Logger.error("keystore file invalid or password error!")
-      :error
+      e ->
+        Logger.error(inspect(e))
+        :error
     end
   end
 
   def unregister do
-    {:ok, %{private_key: private_key, addr: server_addr}} = ARP.Account.get_info()
+    private_key = Account.private_key()
+    server_addr = Account.address()
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     server_info = Contract.get_registered_info(server_addr)

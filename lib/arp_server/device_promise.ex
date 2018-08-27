@@ -103,7 +103,8 @@ defmodule ARP.DevicePromise do
   end
 
   defp send_request(device_address, ip, port, method, data) do
-    {:ok, %{private_key: private_key, addr: address}} = Account.get_info()
+    private_key = Account.private_key()
+    address = Account.address()
 
     nonce = ARP.Nonce.get_and_update_nonce(device_address) |> ARP.Utils.encode_integer()
     url = "http://#{ip}:#{port}"

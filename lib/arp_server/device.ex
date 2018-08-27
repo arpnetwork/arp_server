@@ -81,10 +81,10 @@ defmodule ARP.Device do
 
   def request(dapp_address, price, ip, port) do
     # recover msg and sign to addr
-    {:ok, self_info} = Account.get_info()
+    addr = Account.address()
 
     # check locked arp is enough
-    with true <- check_dapp(dapp_address, self_info.addr),
+    with true <- check_dapp(dapp_address, addr),
          # find device
          {:ok, dev} <- GenServer.call(__MODULE__, {:request, %{price: price}, dapp_address}),
          # prepare device

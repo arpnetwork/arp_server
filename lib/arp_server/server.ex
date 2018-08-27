@@ -2,10 +2,10 @@ defmodule ARP.Server do
   @moduledoc false
 
   def info() do
-    {:ok, info} = ARP.Account.get_info()
+    addr = ARP.Account.address()
 
     %{
-      name: info.addr || "",
+      name: addr || "",
       country: "",
       bandwidth: ARP.Config.get(:bandwidth),
       load: ARP.System.load()[:cpu]

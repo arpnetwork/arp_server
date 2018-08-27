@@ -13,36 +13,52 @@ defmodule ARP.Account do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def init_key(path, auth) do
-    GenServer.call(__MODULE__, {:init_key, path, auth})
+  def set_key(keystore, auth) do
+    GenServer.call(__MODULE__, {:set_key, keystore, auth})
   end
 
-  def get_info do
-    GenServer.call(__MODULE__, :get_info)
+  def private_key do
+    [{:private_key, key}] = :ets.lookup(__MODULE__, :private_key)
+    key
+  end
+
+  def public_key do
+    [{:public_key, key}] = :ets.lookup(__MODULE__, :public_key)
+    key
+  end
+
+  def address do
+    [{:address, addr}] = :ets.lookup(__MODULE__, :address)
+    addr
   end
 
   # Callbacks
 
   def init(_opts) do
-    {:ok, %{private_key: nil, public_key: nil, addr: nil}}
+    :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+    {:ok, []}
   end
 
-  def handle_call({:init_key, keystore, auth}, _from, state) do
+  def handle_call({:set_key, keystore, auth}, _from, state) do
     with {:ok, private_key} <- Crypto.decrypt_keystore(keystore, auth) do
+      public_key = Crypto.eth_privkey_to_pubkey(private_key)
+      address = Crypto.get_eth_addr(public_key)
+      Logger.info("use address #{address}")
+
       Config.set_keystore(keystore)
-      public_key = ARP.Crypto.eth_privkey_to_pubkey(private_key)
-      addr = ARP.Crypto.get_eth_addr(public_key)
 
-      Logger.info("use address #{addr}")
+      data = [
+        {:private_key, private_key},
+        {:public_key, public_key},
+        {:address, address}
+      ]
 
-      {:reply, :ok, %{state | private_key: private_key, public_key: public_key, addr: addr}}
+      :ets.insert(__MODULE__, data)
+
+      {:reply, {:ok, Enum.into(data, %{})}, state}
     else
       _ ->
-        {:reply, :error, state}
+        {:reply, {:error, "keystore file invalid or password error!"}, state}
     end
-  end
-
-  def handle_call(:get_info, _from, state) do
-    {:reply, {:ok, state}, state}
   end
 end

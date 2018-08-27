@@ -8,12 +8,12 @@ defmodule ARP.API.JSONRPC2.Device do
   def request(price, ip, port, nonce, sign) do
     decoded_price = Utils.decode_hex(price)
 
-    {:ok, self_info} = Account.get_info()
+    private_key = Account.private_key()
+    addr = Account.address()
 
-    with {:ok, dapp_address} <-
-           Protocol.verify(method(), [price, ip, port], nonce, sign, self_info.addr),
+    with {:ok, dapp_address} <- Protocol.verify(method(), [price, ip, port], nonce, sign, addr),
          dev when is_map(dev) <- ARP.Device.request(dapp_address, decoded_price, ip, port) do
-      Protocol.response(dev, nonce, dapp_address, self_info.private_key)
+      Protocol.response(dev, nonce, dapp_address, private_key)
     else
       err ->
         Protocol.response(err)
@@ -21,11 +21,12 @@ defmodule ARP.API.JSONRPC2.Device do
   end
 
   def release(address, nonce, sign) do
-    {:ok, self_info} = Account.get_info()
+    private_key = Account.private_key()
+    addr = Account.address()
 
-    with {:ok, dapp_address} <- Protocol.verify(method(), [address], nonce, sign, self_info.addr),
+    with {:ok, dapp_address} <- Protocol.verify(method(), [address], nonce, sign, addr),
          {:ok, _} <- ARP.Device.release(address, dapp_address) do
-      Protocol.response(%{}, nonce, dapp_address, self_info.private_key)
+      Protocol.response(%{}, nonce, dapp_address, private_key)
     else
       err ->
         Protocol.response(err)

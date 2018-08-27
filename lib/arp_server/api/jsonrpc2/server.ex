@@ -2,14 +2,15 @@ defmodule ARP.API.JSONRPC2.Server do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Config, Crypto, Utils}
+  alias ARP.{Account, Config, Crypto, Utils}
 
   def info() do
     Protocol.response(ARP.Server.info())
   end
 
   def bind_promise(spender) do
-    {:ok, %{private_key: private_key, addr: owner}} = ARP.Account.get_info()
+    private_key = Account.private_key()
+    owner = Account.address()
 
     # check server expired whether to send voucher
     server_info = ARP.Contract.get_registered_info(owner)

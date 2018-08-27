@@ -5,7 +5,8 @@ defmodule ARP.API.JSONRPC2.Account do
   alias ARP.{Account, Config, Utils, Crypto, DappPromise, DevicePromise, Contract}
 
   def pay(promise, device_addr, nonce, sign) do
-    {:ok, %{private_key: private_key, addr: addr}} = Account.get_info()
+    private_key = Account.private_key()
+    addr = Account.address()
 
     with {:ok, dapp_addr} <- Protocol.verify(method(), [promise, device_addr], nonce, sign, addr),
          {:ok, promise} <- Poison.decode(promise),
@@ -93,9 +94,10 @@ defmodule ARP.API.JSONRPC2.Account do
 
   def last(cid, sign) do
     decode_cid = Utils.decode_hex(cid)
+    private_key = Account.private_key()
+    addr = Account.address()
 
-    with {:ok, %{private_key: private_key, addr: addr}} <- Account.get_info(),
-         {:ok, dapp_addr} <- Protocol.verify(method(), [cid], sign, addr) do
+    with {:ok, dapp_addr} <- Protocol.verify(method(), [cid], sign, addr) do
       info = ARP.DappPromise.get(dapp_addr)
 
       if info == nil || info["cid"] != decode_cid do
