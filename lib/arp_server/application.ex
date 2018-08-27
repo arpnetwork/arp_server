@@ -11,13 +11,14 @@ defmodule ARP.Application do
       modules: [ARP.API.JSONRPC2.Server, ARP.API.JSONRPC2.Device, ARP.API.JSONRPC2.Account]
     ]
 
+    ARP.Nonce.init()
+
     children = [
       ARP.Config,
       ARP.API.TCP.Store,
       ARP.Account,
       ARP.Device,
       ARP.DeviceNetSpeed,
-      ARP.Nonce,
       ARP.DappPromise,
       ARP.DevicePromise,
       :ranch.child_spec(

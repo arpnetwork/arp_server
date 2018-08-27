@@ -2,62 +2,27 @@ defmodule ARP.Nonce do
   @moduledoc """
   Manager send nonce.
   """
+  @nonce_path Application.get_env(:arp_server, :data_dir)
+              |> Path.join("nonce")
+              |> String.to_charlist()
 
-  use GenServer
+  def init do
+    case :ets.file2tab(@nonce_path, verify: true) do
+      {:ok, tab} ->
+        tab
+
+      _ ->
+        :ets.new(__MODULE__, [:named_table, :public, read_concurrency: true])
+    end
+  end
+
+  def get_all do
+    :ets.match_object(__MODULE__, {:"$1", :"$2"})
+  end
 
   def get_and_update_nonce(address) do
-    GenServer.call(__MODULE__, {:get_and_update_nonce, address})
-  end
-
-  def get_all() do
-    GenServer.call(__MODULE__, :get_all)
-  end
-
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  # Callbacks
-
-  def init(_opts) do
-    {:ok, init_nonce()}
-  end
-
-  def handle_call({:get_and_update_nonce, address}, _from, state) do
-    nonce = Map.get(state, address, 0)
-    nonce = nonce + 1
-    save_nonce_to_file(address, nonce)
-    {:reply, nonce, Map.put(state, address, nonce)}
-  end
-
-  def handle_call(:get_all, _from, state) do
-    {:reply, state, state}
-  end
-
-  defp save_nonce_to_file(address, nonce) do
-    file_path = System.user_home() |> Path.join("/.arp_server/nonce")
-    file_data = read_nonce_file(file_path)
-
-    encode_data = Map.put(file_data, address, nonce) |> Poison.encode!()
-    File.write(file_path, encode_data)
-  end
-
-  defp init_nonce() do
-    file_path = System.user_home() |> Path.join("/.arp_server/nonce")
-    read_nonce_file(file_path)
-  end
-
-  defp read_nonce_file(file_path) do
-    case File.read(file_path) do
-      {:ok, data} ->
-        if data == "" do
-          %{}
-        else
-          Poison.decode!(data)
-        end
-
-      {:error, _} ->
-        %{}
-    end
+    nonce = :ets.update_counter(__MODULE__, address, 1, {address, 0})
+    :ets.tab2file(__MODULE__, @nonce_path, extended_info: [:md5sum])
+    nonce
   end
 end
