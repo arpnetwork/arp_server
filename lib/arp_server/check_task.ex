@@ -30,9 +30,14 @@ defmodule ARP.CheckTask do
   defp check_dapp_approval(dapp_addr, info, private_key, server_addr) do
     %{id: cid, paid: paid, expired: expired} = ARP.Contract.bank_allowance(dapp_addr, server_addr)
 
-    check_time = (DateTime.utc_now() |> DateTime.to_unix()) + 60 * 60 * 24
+    check_time = expired - 60 * 60 * 24
+    now = DateTime.utc_now() |> DateTime.to_unix()
 
-    if info["cid"] == cid && info["amount"] > paid && expired != 0 && expired < check_time do
+    if expired != 0 && now > check_time do
+      ARP.Device.release_by_dapp(dapp_addr)
+    end
+
+    if info["cid"] == cid && info["amount"] > paid && expired != 0 && now > check_time do
       Task.start(fn ->
         ARP.Contract.bank_cash(private_key, dapp_addr, server_addr, info["amount"], info["sign"])
       end)

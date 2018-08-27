@@ -107,8 +107,11 @@ defmodule ARP.Device do
   end
 
   def release(address, dapp_address) do
-    # TODO notify device to release
     GenServer.call(__MODULE__, {:release, address, dapp_address})
+  end
+
+  def release_by_dapp(dapp_address) do
+    GenServer.call(__MODULE__, {:release_by_dapp, dapp_address})
   end
 
   def idle(address) do
@@ -190,6 +193,24 @@ defmodule ARP.Device do
       _ ->
         {:reply, {:error, :device_not_found}, devices}
     end
+  end
+
+  def handle_call({:release_by_dapp, dapp_address}, _from, devices) do
+    list = Enum.filter(devices, fn {_, dev} -> dev.dapp_address == dapp_address end)
+
+    devices =
+      Enum.reduce(list, devices, fn {address, dev}, acc ->
+        case DeviceProtocol.alloc_end(address, dapp_address) do
+          :ok ->
+            dev = set_idle(dev)
+            Map.put(acc, address, dev)
+
+          _ ->
+            acc
+        end
+      end)
+
+    {:reply, :ok, devices}
   end
 
   def handle_call({:idle, address}, _from, devices) do
@@ -310,11 +331,8 @@ defmodule ARP.Device do
     registry_addr = Application.get_env(:arp_server, :registry_contract_address)
     now = DateTime.utc_now() |> DateTime.to_unix()
 
-    # TODO: save approve info
-
     if bind_info.server != server_addr || approve_info.proxy != registry_addr ||
-         (approve_info.expired != 0 && approve_info.expired < now) do
-      # TODO: clean approve info
+         (approve_info.expired != 0 && approve_info.expired - 60 * 60 * 24 < now) do
       false
     else
       true
