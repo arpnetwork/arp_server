@@ -1,22 +1,30 @@
 defmodule ARP.DevicePromise do
-  use GenServer
-
-  @file_path System.user_home() |> Path.join("/.arp_server/device_promise")
-
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
   alias ARP.Account
+
+  use GenServer
+
+  @file_path Application.get_env(:arp_server, :data_dir)
+             |> Path.join("device_promise")
+             |> String.to_charlist()
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def get(device_addr) do
-    GenServer.call(__MODULE__, {:get, device_addr})
+    case :ets.lookup(__MODULE__, device_addr) do
+      [{^device_addr, value}] ->
+        value
+
+      [] ->
+        nil
+    end
   end
 
   def get_all() do
-    GenServer.call(__MODULE__, :get_all)
+    :ets.match_object(__MODULE__, {:"$1", :"$2"})
   end
 
   def set(device_addr, value) do
@@ -30,61 +38,32 @@ defmodule ARP.DevicePromise do
   # Callbacks
 
   def init(_opts) do
-    {:ok, init_promise()}
+    tab =
+      case :ets.file2tab(@file_path, verify: true) do
+        {:ok, tab} ->
+          tab
+
+        _ ->
+          :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+      end
+
+    {:ok, tab}
   end
 
-  def handle_call({:get, device_addr}, _from, state) do
-    value = Map.get(state, device_addr)
-    {:reply, value, state}
+  def handle_call({:set, device_addr, value}, _from, tab) do
+    :ets.insert(tab, {device_addr, value})
+    write_file(tab)
+    {:reply, :ok, tab}
   end
 
-  def handle_call(:get_all, _from, state) do
-    {:reply, state, state}
+  def handle_call({:delete, device_addr}, _from, tab) do
+    :ets.delete(tab, device_addr)
+    write_file(tab)
+    {:reply, :ok, tab}
   end
 
-  def handle_call({:set, device_addr, value}, _from, state) do
-    save_promise_to_file(device_addr, value)
-    {:reply, :ok, Map.put(state, device_addr, value)}
-  end
-
-  def handle_call({:delete, device_addr}, _from, state) do
-    delete_promise_to_file(device_addr)
-    {:reply, :ok, Map.delete(state, device_addr)}
-  end
-
-  defp save_promise_to_file(key, value) do
-    file_path = @file_path
-    file_data = read_promise_file(file_path)
-
-    encode_data = Map.put(file_data, key, value) |> Poison.encode!()
-    File.write(file_path, encode_data)
-  end
-
-  defp delete_promise_to_file(key) do
-    file_path = @file_path
-    file_data = read_promise_file(file_path)
-
-    encode_data = Map.delete(file_data, key) |> Poison.encode!()
-    File.write(file_path, encode_data)
-  end
-
-  defp init_promise() do
-    file_path = @file_path
-    read_promise_file(file_path)
-  end
-
-  defp read_promise_file(file_path) do
-    case File.read(file_path) do
-      {:ok, data} ->
-        if data == "" do
-          %{}
-        else
-          Poison.decode!(data)
-        end
-
-      {:error, _} ->
-        %{}
-    end
+  def write_file(tab) do
+    :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
   end
 
   def account_pay(device_address, promise) do
