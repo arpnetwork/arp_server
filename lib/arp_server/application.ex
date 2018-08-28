@@ -34,7 +34,6 @@ defmodule ARP.Application do
         plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
         options: [port: @jsonrpc_port]
       ),
-      ARP.API.JSONRPC2.Nonce,
       ARP.CheckTask
     ]
 

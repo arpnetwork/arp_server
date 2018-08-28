@@ -1,5 +1,5 @@
 defmodule ARP.API.JSONRPC2.Protocol do
-  alias ARP.API.JSONRPC2.Nonce
+  alias ARP.Nonce
   alias ARP.Crypto
   alias ARP.Utils
 
@@ -9,7 +9,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
 
     with <<_::binary-size(130)>> <- sign,
          {:ok, address} <- Crypto.eth_recover(msg, sign),
-         :ok <- Nonce.check_and_update_nonce(address, decoded_nonce) do
+         :ok <- Nonce.check_and_update_nonce(address, self_addr, decoded_nonce) do
       {:ok, address}
     else
       {:error, reason} when is_atom(reason) ->
