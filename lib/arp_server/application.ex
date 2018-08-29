@@ -8,7 +8,12 @@ defmodule ARP.Application do
 
   def start(_type, _args) do
     jsonrpc2_opts = [
-      modules: [ARP.API.JSONRPC2.Server, ARP.API.JSONRPC2.Device, ARP.API.JSONRPC2.Account]
+      modules: [
+        ARP.API.JSONRPC2.Server,
+        ARP.API.JSONRPC2.Device,
+        ARP.API.JSONRPC2.Account,
+        ARP.API.JSONRPC2.Nonce
+      ]
     ]
 
     ARP.Nonce.init()
