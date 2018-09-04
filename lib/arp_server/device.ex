@@ -126,6 +126,10 @@ defmodule ARP.Device do
     GenServer.call(__MODULE__, {:get, address})
   end
 
+  def size do
+    GenServer.call(__MODULE__, :size)
+  end
+
   def update_net_speed(ids, upload_speed, download_speed)
       when is_list(ids) and is_integer(upload_speed) and is_integer(download_speed) do
     GenServer.cast(__MODULE__, {:update_net_speed, ids, upload_speed, download_speed})
@@ -230,6 +234,10 @@ defmodule ARP.Device do
 
   def handle_call({:get, address}, _from, devices) do
     {:reply, Map.get(devices, address), devices}
+  end
+
+  def handle_call(:size, _from, state) do
+    {:reply, map_size(state), state}
   end
 
   def handle_cast({:update_net_speed, ids, upload_speed, download_speed}, devices) do

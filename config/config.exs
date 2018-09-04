@@ -12,6 +12,7 @@ config :arp_server,
   # user default config
   port: 8000,
   deposit: 200_000 * round(1.0e18),
+  max_load: 1000,
   keystore_file: nil,
   ip: nil,
   bandwidth: nil
