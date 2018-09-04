@@ -108,6 +108,9 @@ defmodule ARP.Crypto do
       _e ->
         :error
     end
+  rescue
+    _ ->
+      :error
   end
 
   defp decrpt_key(%{} = keystore, auth) do

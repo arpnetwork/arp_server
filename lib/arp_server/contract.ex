@@ -117,6 +117,7 @@ defmodule ARP.Contract do
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    res = if bit_size(res) != 1024, do: <<0::size(1024)>>, else: res
 
     <<ip::size(256), port::size(256), size::size(256), expired::size(256)>> = res
 
@@ -144,6 +145,7 @@ defmodule ARP.Contract do
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
     <<server::binary-size(32), expired::size(256)>> = res
 
@@ -169,6 +171,7 @@ defmodule ARP.Contract do
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
     <<server::binary-size(32), expired::size(256)>> = res
 
@@ -267,6 +270,7 @@ defmodule ARP.Contract do
 
     {:ok, res} = Ethereumex.HttpClient.eth_call(params)
     res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    res = if bit_size(res) != 1280, do: <<0::size(1280)>>, else: res
 
     <<id::size(256), amount::size(256), paid::size(256), expired::size(256),
       proxy::binary-size(32)>> = res

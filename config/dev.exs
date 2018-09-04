@@ -8,7 +8,7 @@ config :arp_server,
   first_registry_block: "0x1"
 
 config :ethereumex,
-  url: "http://192.168.0.164:8545"
+  url: "http://localhost:8545"
 
 config :os_mon,
   start_cpu_sup: true,
