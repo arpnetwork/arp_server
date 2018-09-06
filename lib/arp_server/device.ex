@@ -30,7 +30,8 @@ defmodule ARP.Device do
     :storage,
     :os_ver,
     :system_ver,
-    :resolution,
+    :width,
+    :height,
     :imsi,
     :telecom_operator,
     :connectivity,
@@ -92,7 +93,9 @@ defmodule ARP.Device do
       %{
         address: dev.address,
         ip: dev.ip,
-        port: dev.port
+        port: dev.port,
+        width: dev.width,
+        height: dev.height
       }
     else
       %{amount: _} ->
