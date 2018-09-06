@@ -8,6 +8,8 @@ defmodule ARP.Init do
   require Logger
 
   def init do
+    check_config()
+
     data_path = Config.get(:data_dir)
 
     unless File.exists?(data_path) do
@@ -134,6 +136,20 @@ defmodule ARP.Init do
 
     if server == server_addr && expired == 0 do
       {:ok, %{"status" => "0x1"}} = Contract.unbind_device_by_server(private_key, device_addr)
+    end
+  end
+
+  defp check_config do
+    all_config = Config.all()
+    all_env = Application.get_all_env(:arp_server)
+
+    Enum.each(all_env, fn {k, _v} -> check_key(all_config, k) end)
+  end
+
+  defp check_key(all_config, k) do
+    unless Keyword.has_key?(all_config, k) do
+      Logger.error("#{k} in config can not null!")
+      exit(:shutdown)
     end
   end
 end

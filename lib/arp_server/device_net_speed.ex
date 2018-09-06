@@ -2,6 +2,7 @@ defmodule ARP.DeviceNetSpeed do
   @moduledoc """
   Record the net speed for ip.
   """
+  require Logger
 
   alias ARP.{Config, Device}
 
@@ -53,6 +54,12 @@ defmodule ARP.DeviceNetSpeed do
   """
   def init(_opts) do
     bandwidth = Config.get(:bandwidth)
+
+    if is_nil(bandwidth) || !is_integer(bandwidth) do
+      Logger.error("bandwidth in config is null or not integer!")
+      exit(:shutdown)
+    end
+
     max_testing = (bandwidth / 100) |> round() |> max(1)
 
     Process.send_after(__MODULE__, :interval, @interval)

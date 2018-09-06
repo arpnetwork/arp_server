@@ -54,6 +54,10 @@ defmodule ARP.Config do
     end
   end
 
+  def all do
+    :ets.match_object(__MODULE__, {:"$1", :"$2"})
+  end
+
   def set_keystore(keystore) do
     GenServer.cast(__MODULE__, {:set_keystore, keystore})
   end
