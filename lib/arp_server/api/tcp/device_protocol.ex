@@ -21,12 +21,15 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_alloc_end_notify 7
   @cmd_device_use_end_report 8
   @cmd_speed_notify 9
+  @cmd_repeat_connect_offline_notify 10
 
   @cmd_result_success 0
   @cmd_result_ver_err -1
   @cmd_result_verify_err -2
+  @cmd_result_port_err -3
 
   @timeout 60_000
+  @speed_timeout 60_000
 
   @speed_test_packet_len 2_621_440
   @speed_test_interval 200
@@ -70,6 +73,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   def alloc_end(addr, dapp_address) do
     pid = Store.get(addr)
     Process.send(pid, {:alloc_end, dapp_address}, [])
+  end
+
+  def repeat_connect_offline(pid, addr) do
+    Process.send(pid, {:repeat_connect_offline, addr}, [])
   end
 
   @doc false
@@ -149,8 +156,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     :ok = :ranch_tcp.send(socket, gen_speed_test_data())
 
     # receive download speed test result
-    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
-    {:ok, data} = :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @timeout)
+    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
+    {:ok, data} = :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @speed_timeout)
     <<@protocol_type_data, data::binary>> = data
     %{id: @cmd_dl_speed_report, data: %{hash: hash}} = Poison.decode!(data, keys: :atoms!)
 
@@ -159,26 +166,26 @@ defmodule ARP.API.TCP.DeviceProtocol do
       dl_speed = round(dl_size / (dl_end_time - dl_start_time) * 1000)
 
       # upload speed test start
-      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
 
       {:ok, <<@protocol_type_speed_test>>} =
-        :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @timeout)
+        :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @speed_timeout)
 
       start_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
 
       # receive upload speed test data
-      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
 
-      {:ok, <<@protocol_type_speed_test>>} = :ranch_tcp.recv(socket, 1, @timeout)
+      {:ok, <<@protocol_type_speed_test>>} = :ranch_tcp.recv(socket, 1, @speed_timeout)
 
       size = :binary.decode_unsigned(size) - 1
       speed_test_recv_loop(socket, size)
 
       # upload speed test end
-      {:ok, len} = :ranch_tcp.recv(socket, @protocol_packet, @timeout)
+      {:ok, len} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
 
       {:ok, <<@protocol_type_speed_test>>} =
-        :ranch_tcp.recv(socket, :binary.decode_unsigned(len), @timeout)
+        :ranch_tcp.recv(socket, :binary.decode_unsigned(len), @speed_timeout)
 
       end_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
       ul_speed = round(size / (end_time - start_time) * 1000)
@@ -220,6 +227,23 @@ defmodule ARP.API.TCP.DeviceProtocol do
       }
     }
     |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
+  def handle_info(
+        {:repeat_connect_offline, addr},
+        %{socket: socket, transport: transport} = state
+      ) do
+    %{
+      id: @cmd_repeat_connect_offline_notify,
+      data: %{
+        address: addr
+      }
+    }
+    |> send_resp(socket)
+
+    transport.close(socket)
 
     {:noreply, state}
   end
@@ -285,6 +309,14 @@ defmodule ARP.API.TCP.DeviceProtocol do
     device_addr = Map.get(state, :device_addr)
     {:ok, {ip, _}} = :ranch_tcp.peername(socket)
 
+    # if device has already connect, first disconnect it.
+    if Store.has_key?(device_addr) do
+      pid = Store.get(device_addr)
+      repeat_connect_offline(pid, device_addr)
+      Store.delete(device_addr)
+      ARP.Device.offline(device_addr)
+    end
+
     cond do
       !device_addr ->
         online_resp(socket, @cmd_result_verify_err)
@@ -295,7 +327,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         state.transport.close(socket)
 
       :error == ARP.Device.check_port(ip, data[:port], data[:port] + 1) ->
-        online_resp(socket, @cmd_result_verify_err)
+        online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
 
       !Store.has_key?(device_addr) ->
@@ -413,12 +445,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
         nil
 
       size >= @speed_test_packet_len ->
-        {:ok, data} = :ranch_tcp.recv(socket, @speed_test_packet_len, @timeout)
+        {:ok, data} = :ranch_tcp.recv(socket, @speed_test_packet_len, @speed_timeout)
         Process.sleep(@speed_test_interval)
         speed_test_recv_loop(socket, size - byte_size(data))
 
       size < @speed_test_packet_len ->
-        {:ok, _data} = :ranch_tcp.recv(socket, size, @timeout)
+        {:ok, _data} = :ranch_tcp.recv(socket, size, @speed_timeout)
         speed_test_recv_loop(socket, 0)
     end
   end

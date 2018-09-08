@@ -52,6 +52,7 @@ defmodule ARP.Device do
     with {:ok, socket} <- :gen_tcp.connect(ip, tcp_port, [active: false], 5000),
          {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
          :gen_tcp.close(socket),
+         JSONRPC2.Client.HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []),
          {:ok, _} <- JSONRPC2.Client.HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []) do
       :ok
     else
