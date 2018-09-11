@@ -22,14 +22,12 @@ defmodule ARP.Server do
     # check server expired whether to send promise
     server_info = Contract.get_registered_info(owner)
     approve_info = Contract.bank_allowance(spender)
-    bind_info = Contract.get_device_bind_info(spender)
     device_hold = Contract.get_device_holding()
 
     check_time = (DateTime.utc_now() |> DateTime.to_unix()) + 60 * 60 * 24
-    empty_addr = "0x0000000000000000000000000000000000000000"
 
     if (server_info.expired == 0 || server_info.expired > check_time) &&
-         bind_info.server == empty_addr && approve_info.amount >= device_hold do
+         approve_info.amount >= device_hold do
       amount = Config.get(:device_deposit)
       sign_expired = (DateTime.utc_now() |> DateTime.to_unix()) + 60 * 60 * 4
       expired = 0
