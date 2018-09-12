@@ -110,7 +110,7 @@ defmodule ARP.Account do
       :ok = DappPromise.set(dapp_addr, value)
 
       # calc device amount
-      %{cid: device_cid} = ARP.Device.get(device_addr)
+      {_pid, %{cid: device_cid}} = ARP.DevicePool.get(device_addr)
       data = DevicePromise.get(device_addr)
 
       last_device_amount =

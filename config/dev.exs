@@ -2,9 +2,9 @@ use Mix.Config
 
 config :arp_server,
   chain_id: 1000,
-  token_contract_address: "0x8d39dd6b431bfb065b51fea07b7ee75bef0b53f8",
-  registry_contract_address: "0x9f6b469dd5ec3e86f19cac817a2bc802ae54520d",
-  bank_contract_address: "0x19ea440d8a78a06be54ffca6a8564197bd1b443a",
+  token_contract_address: "0xe1c62093f55e8d7a86198dd8186e6de414b3fae4",
+  registry_contract_address: "0xf806be137e1b3b8a8bd324873fe63ec70c78c139",
+  bank_contract_address: "0x2d240cfa28c9d3702acd77425d0a12fa41dda35a",
   first_registry_block: "0x1"
 
 config :ethereumex,

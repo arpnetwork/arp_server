@@ -40,7 +40,7 @@ defmodule ARP.CheckTask do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     if bind_expired != 0 && now > check_time do
-      ARP.Device.release_by_dapp(dapp_addr)
+      ARP.DevicePool.release_by_dapp(dapp_addr)
     end
 
     if info["cid"] == cid && info["amount"] > paid &&

@@ -10,7 +10,7 @@ defmodule ARP.Server do
       name: addr || "",
       country: "",
       bandwidth: Config.get(:bandwidth),
-      load: ARP.Device.size(),
+      load: ARP.DevicePool.size(),
       maxLoad: Config.get(:max_load)
     }
   end

@@ -4,7 +4,7 @@ defmodule ARP.DeviceNetSpeed do
   """
   require Logger
 
-  alias ARP.{Config, Device}
+  alias ARP.{Config, DevicePool}
 
   use GenServer
 
@@ -181,7 +181,7 @@ defmodule ARP.DeviceNetSpeed do
     if l > 0 do
       avg_up = round(up / l)
       avg_down = round(down / l)
-      Device.update_net_speed(device_ids, avg_up, avg_down)
+      DevicePool.update_net_speed(device_ids, avg_up, avg_down)
     end
   end
 
