@@ -3,7 +3,7 @@ defmodule ARP.Device do
   Record online device.
   """
 
-  alias ARP.{DevicePool, DeviceNetSpeed}
+  alias ARP.{DevicePool, DeviceNetSpeed, Contract}
   alias ARP.API.TCP.DeviceProtocol
 
   use GenServer, restart: :temporary
@@ -12,6 +12,8 @@ defmodule ARP.Device do
   @pending 0
   @idle 1
   @allocating 2
+
+  @check_interval 1000 * 60 * 10
 
   defstruct [
     :address,
@@ -107,7 +109,10 @@ defmodule ARP.Device do
 
   def init(opts) do
     dev = opts[:device]
-    {:ok, %{address: dev.address}}
+
+    Process.send_after(self(), :check_interval, @check_interval)
+
+    {:ok, %{address: dev.address, increasing: false}}
   end
 
   def handle_call({:offline, dev}, _from, %{address: address} = state) do
@@ -172,6 +177,39 @@ defmodule ARP.Device do
       _ ->
         {:noreply, state}
     end
+  end
+
+  def handle_info(:check_interval, %{address: address, increasing: increasing} = state) do
+    pid = self()
+    Process.send_after(pid, :check_interval, @check_interval)
+
+    server_addr = ARP.Account.address()
+    private_key = ARP.Account.private_key()
+
+    with %{"cid" => cid, "amount" => device_amount} <- ARP.DevicePromise.get(address),
+         %{id: allowance_cid, amount: current_amount, expired: expired} <-
+           Contract.bank_allowance(server_addr, address) do
+      approval_amount = ARP.Config.get(:device_deposit)
+
+      if increasing == false && cid == allowance_cid &&
+           device_amount > round(current_amount * 0.8) do
+        Task.start(fn ->
+          Contract.bank_increase_approval(private_key, address, approval_amount, expired)
+          Process.send(pid, :change_increasing, [])
+        end)
+
+        {:noreply, %{state | increasing: true}}
+      else
+        {:noreply, state}
+      end
+    else
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(:change_increasing, state) do
+    {:noreply, %{state | increasing: false}}
   end
 
   def is_pending?(device) do
