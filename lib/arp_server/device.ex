@@ -107,11 +107,6 @@ defmodule ARP.Device do
 
   def init(opts) do
     dev = opts[:device]
-
-    if dev.state == @pending do
-      DeviceNetSpeed.online(dev.ip, dev.address)
-    end
-
     {:ok, %{address: dev.address}}
   end
 

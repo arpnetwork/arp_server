@@ -1,5 +1,5 @@
 defmodule ARP.DevicePool do
-  alias ARP.{Device, DappPool}
+  alias ARP.{Device, DappPool, DeviceNetSpeed}
   alias ARP.API.TCP.DeviceProtocol
 
   use GenServer
@@ -121,6 +121,10 @@ defmodule ARP.DevicePool do
       nil ->
         case create(device) do
           {:ok, ref} ->
+            if Device.is_pending?(device) do
+              DeviceNetSpeed.online(device.ip, device.address)
+            end
+
             refs = Map.put(refs, ref, addr)
             {:reply, :ok, Map.put(state, :refs, refs)}
 
