@@ -1,5 +1,5 @@
 defmodule ARP.DevicePool do
-  alias ARP.{Device, Account, Contract}
+  alias ARP.{Device, DappPool}
   alias ARP.API.TCP.DeviceProtocol
 
   use GenServer
@@ -76,9 +76,7 @@ defmodule ARP.DevicePool do
   end
 
   def request(dapp_address, price, ip, port) do
-    addr = Account.address()
-
-    if check_dapp(dapp_address, addr) do
+    if DappPool.check(dapp_address) do
       GenServer.call(__MODULE__, {:request, dapp_address, price, ip, port})
     else
       {:error, :bind_error}
@@ -189,20 +187,6 @@ defmodule ARP.DevicePool do
 
       _ ->
         {:error, :online_faild}
-    end
-  end
-
-  defp check_dapp(dapp_addr, server_addr) do
-    bind_info = Contract.get_dapp_bind_info(dapp_addr, server_addr)
-    approve_info = Contract.bank_allowance(dapp_addr, server_addr)
-    registry_addr = Application.get_env(:arp_server, :registry_contract_address)
-    now = DateTime.utc_now() |> DateTime.to_unix()
-
-    if bind_info.server != server_addr || approve_info.proxy != registry_addr ||
-         (approve_info.expired != 0 && approve_info.expired - 60 * 60 * 24 < now) do
-      false
-    else
-      true
     end
   end
 

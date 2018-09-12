@@ -364,6 +364,42 @@ defmodule ARP.Contract do
     end)
   end
 
+  def get_bound_dapp(address) do
+    bind_topic =
+      "0x" <> Base.encode16(Crypto.keccak256("AppBound(address,address)"), case: :lower)
+
+    unbind_topic =
+      "0x" <> Base.encode16(Crypto.keccak256("AppUnbound(address,address)"), case: :lower)
+
+    encoded_address = String.replace_prefix(address, "0x", "0x000000000000000000000000")
+
+    params = %{
+      fromBlock: @first_registry_block,
+      toBlock: "latest",
+      address: @registry_contract,
+      topics: [[bind_topic, unbind_topic], nil, encoded_address]
+    }
+
+    {:ok, id} = Ethereumex.HttpClient.eth_new_filter(params)
+    {:ok, logs} = Ethereumex.HttpClient.eth_get_filter_logs(id)
+    Ethereumex.HttpClient.eth_uninstall_filter(id)
+
+    Enum.reduce(logs, [], fn item, acc ->
+      if item["removed"] == false do
+        [topic, dapp, _] = item["topics"]
+        dapp = String.replace_prefix(dapp, "0x000000000000000000000000", "0x")
+
+        if topic == bind_topic do
+          [dapp | acc]
+        else
+          List.delete(acc, dapp)
+        end
+      else
+        acc
+      end
+    end)
+  end
+
   @doc """
   Transfer arp to some one.
   """

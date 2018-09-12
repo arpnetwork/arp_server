@@ -6,7 +6,7 @@ defmodule ARP.Device do
   alias ARP.{DevicePool, DeviceNetSpeed}
   alias ARP.API.TCP.DeviceProtocol
 
-  use GenServer
+  use GenServer, restart: :temporary
 
   # state value
   @pending 0

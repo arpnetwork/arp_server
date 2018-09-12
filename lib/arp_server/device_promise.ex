@@ -1,7 +1,7 @@
 defmodule ARP.DevicePromise do
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
-  alias ARP.Account
+  alias ARP.{Account, Promise}
 
   use GenServer
 
@@ -35,6 +35,24 @@ defmodule ARP.DevicePromise do
     GenServer.call(__MODULE__, {:delete, device_addr})
   end
 
+  def pay(device_address, promise) do
+    set(device_address, promise)
+    promise_data = promise |> Promise.encode() |> Poison.encode!()
+
+    method = "account_pay"
+    sign_data = [promise_data]
+
+    {_pid, %{ip: ip, port: port}} = ARP.DevicePool.get(device_address)
+
+    case send_request(device_address, ip, port + 1, method, sign_data) do
+      {:ok, _result} ->
+        :ok
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   # Callbacks
 
   def init(_opts) do
@@ -64,21 +82,6 @@ defmodule ARP.DevicePromise do
 
   def write_file(tab) do
     :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
-  end
-
-  def account_pay(device_address, promise) do
-    method = "account_pay"
-    sign_data = [promise]
-
-    {_pid, %{ip: ip, port: port}} = ARP.DevicePool.get(device_address)
-
-    case send_request(device_address, ip, port + 1, method, sign_data) do
-      {:ok, _result} ->
-        :ok
-
-      {:error, error} ->
-        {:error, error}
-    end
   end
 
   defp send_request(device_address, ip, port, method, data) do

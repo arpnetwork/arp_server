@@ -26,6 +26,7 @@ defmodule ARP.Application do
       ARP.DevicePool,
       ARP.DeviceNetSpeed,
       ARP.DappPromise,
+      ARP.DappPool,
       ARP.DevicePromise,
       :ranch.child_spec(
         :tcp_device,
@@ -49,6 +50,7 @@ defmodule ARP.Application do
     # initialize
     case ARP.Init.init() do
       :ok ->
+        ARP.DappPool.load_bound_dapp()
         {:ok, pid}
 
       :error ->

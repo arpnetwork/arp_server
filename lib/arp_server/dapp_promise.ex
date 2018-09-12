@@ -4,9 +4,10 @@ defmodule ARP.DappPromise do
   @file_path Application.get_env(:arp_server, :data_dir)
              |> Path.join("dapp_promise")
              |> String.to_charlist()
+  @save_promise_interval 1000
 
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def set(dapp_addr, promise) do
+    :ets.insert(__MODULE__, {dapp_addr, promise})
   end
 
   def get(dapp_addr) do
@@ -20,15 +21,15 @@ defmodule ARP.DappPromise do
   end
 
   def get_all() do
-    :ets.match_object(__MODULE__, {:"$1", :"$2"})
-  end
-
-  def set(dapp_addr, value) do
-    GenServer.call(__MODULE__, {:set, dapp_addr, value})
+    :ets.tab2list(__MODULE__)
   end
 
   def delete(dapp_addr) do
-    GenServer.call(__MODULE__, {:delete, dapp_addr})
+    :ets.delete(__MODULE__, dapp_addr)
+  end
+
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   # Callbacks
@@ -40,25 +41,26 @@ defmodule ARP.DappPromise do
           tab
 
         _ ->
-          :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+          :ets.new(__MODULE__, [
+            :named_table,
+            :public,
+            write_concurrency: true,
+            read_concurrency: true
+          ])
       end
 
+    save_promise_timer()
     {:ok, tab}
   end
 
-  def handle_call({:set, dapp_addr, value}, _from, tab) do
-    :ets.insert(tab, {dapp_addr, value})
-    write_file(tab)
-    {:reply, :ok, tab}
-  end
-
-  def handle_call({:delete, dapp_addr}, _from, tab) do
-    :ets.delete(tab, dapp_addr)
-    write_file(tab)
-    {:reply, :ok, tab}
-  end
-
-  def write_file(tab) do
+  def handle_info(:save_promise, tab) do
     :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+
+    save_promise_timer()
+    {:noreply, tab}
+  end
+
+  defp save_promise_timer do
+    Process.send_after(__MODULE__, :save_promise, @save_promise_interval)
   end
 end

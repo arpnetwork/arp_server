@@ -4,7 +4,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   """
 
   alias ARP.API.TCP.Store
-  alias ARP.{Account, Crypto}
+  alias ARP.{Account, Crypto, Promise}
 
   use GenServer
 
@@ -270,28 +270,23 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       # check promise
       if promise != nil do
-        promise = Poison.decode!(promise, keys: :atoms!)
-        cid = ARP.Utils.decode_hex(promise[:cid])
-        amount = ARP.Utils.decode_hex(promise[:amount])
+        promise = Poison.decode!(promise, as: %Promise{}) |> Promise.decode()
 
         result =
           check_recover_promise(
-            cid,
+            promise.cid,
             addr,
             device_addr,
-            amount,
-            promise[:sign]
+            promise.amount,
+            promise.sign
           )
 
         if result do
           info = ARP.DevicePromise.get(device_addr)
 
-          if info["cid"] == nil || (cid == info["cid"] && amount > info["amount"]) do
-            ARP.DevicePromise.set(device_addr, %{
-              "cid" => cid,
-              "amount" => amount,
-              "approval_time" => 0
-            })
+          if info == nil || info.cid == 0 ||
+               (promise.cid == info.cid && promise.amount > info.amount) do
+            ARP.DevicePromise.set(device_addr, promise)
           end
         end
       end

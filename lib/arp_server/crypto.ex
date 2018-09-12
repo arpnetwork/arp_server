@@ -77,7 +77,6 @@ defmodule ARP.Crypto do
   ecRecover
   return: eth address
   """
-  @spec eth_recover(String.t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eth_recover(msg, sign) do
     {v, _r, _s} = decode_sign(sign)
     recovery_id = v - @base_recovery_id

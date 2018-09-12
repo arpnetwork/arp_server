@@ -12,10 +12,6 @@ defmodule ARP.CheckTask do
     private_key = ARP.Account.private_key()
     server_addr = ARP.Account.address()
 
-    # check dapp promise expired
-    info = ARP.DappPromise.get_all()
-    Enum.each(info, fn {k, v} -> check_dapp_approval(k, v, private_key, server_addr) end)
-
     # get device bind list
     device_list = ARP.Contract.get_bound_device(server_addr)
 
@@ -28,27 +24,6 @@ defmodule ARP.CheckTask do
     check_server_unregister(private_key, server_addr, device_list)
 
     run()
-  end
-
-  defp check_dapp_approval(dapp_addr, info, private_key, server_addr) do
-    %{id: cid, paid: paid, expired: expired} = ARP.Contract.bank_allowance(dapp_addr, server_addr)
-
-    %{expired: bind_expired} = ARP.Contract.get_dapp_bind_info(dapp_addr, server_addr)
-
-    check_time = bind_expired - 60 * 60 * 24
-    allowance_check_time = expired - 60 * 60 * 24
-    now = DateTime.utc_now() |> DateTime.to_unix()
-
-    if bind_expired != 0 && now > check_time do
-      ARP.DevicePool.release_by_dapp(dapp_addr)
-    end
-
-    if info["cid"] == cid && info["amount"] > paid &&
-         ((bind_expired != 0 && now > check_time) || (expired != 0 && now > allowance_check_time)) do
-      Task.start(fn ->
-        ARP.Contract.bank_cash(private_key, dapp_addr, server_addr, info["amount"], info["sign"])
-      end)
-    end
   end
 
   defp check_device_bind(device_addr, private_key, server_addr) do
