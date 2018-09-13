@@ -4,10 +4,10 @@ defmodule ARP.DappPromise do
   @file_path Application.get_env(:arp_server, :data_dir)
              |> Path.join("dapp_promise")
              |> String.to_charlist()
-  @save_promise_interval 1000
 
   def set(dapp_addr, promise) do
     :ets.insert(__MODULE__, {dapp_addr, promise})
+    GenServer.cast(__MODULE__, :write)
   end
 
   def get(dapp_addr) do
@@ -49,18 +49,17 @@ defmodule ARP.DappPromise do
           ])
       end
 
-    save_promise_timer()
-    {:ok, tab}
+    {:ok, %{tab: tab, wrote_at: 0}}
   end
 
-  def handle_info(:save_promise, tab) do
-    :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+  def handle_cast(:write, %{tab: tab, wrote_at: wrote_at} = state) do
+    now = DateTime.utc_now() |> DateTime.to_unix()
 
-    save_promise_timer()
-    {:noreply, tab}
-  end
-
-  defp save_promise_timer do
-    Process.send_after(__MODULE__, :save_promise, @save_promise_interval)
+    if now - wrote_at > 1 do
+      :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+      {:noreply, %{state | wrote_at: now}}
+    else
+      {:noreply, state}
+    end
   end
 end
