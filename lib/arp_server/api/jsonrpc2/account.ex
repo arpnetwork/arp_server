@@ -32,7 +32,7 @@ defmodule ARP.API.JSONRPC2.Account do
         promise =
           promise
           |> Promise.encode()
-          |> Poison.encode()
+          |> Poison.encode!()
 
         Protocol.response(%{promise: promise}, dapp_addr, private_key)
       end

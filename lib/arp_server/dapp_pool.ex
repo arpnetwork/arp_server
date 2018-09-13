@@ -68,7 +68,7 @@ defmodule ARP.DappPool do
 
     Task.start(fn ->
       Enum.map(dapp_list, fn dapp_addr ->
-        create(dapp_addr, :unkown)
+        create(dapp_addr, nil)
       end)
     end)
 

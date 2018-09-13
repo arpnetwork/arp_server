@@ -20,7 +20,9 @@ defmodule ARP.Dapp do
   def first_check(dapp_addr) do
     server_addr = Account.address()
 
-    %{id: id, expired: expired, proxy: proxy} = Contract.bank_allowance(dapp_addr, server_addr)
+    %{id: id, expired: expired, proxy: proxy, amount: amount} =
+      Contract.bank_allowance(dapp_addr, server_addr)
+
     %{expired: bind_expired, server: server} = Contract.get_dapp_bind_info(dapp_addr, server_addr)
     registry_addr = Application.get_env(:arp_server, :registry_contract_address)
 
@@ -42,7 +44,8 @@ defmodule ARP.Dapp do
         :normal
 
       (expired != 0 && now >= expired - one_day) ||
-          (bind_expired != 0 && now >= bind_expired - one_day) ->
+        (bind_expired != 0 && now >= bind_expired - one_day) ||
+          (last_promise && last_promise.amount >= amount * 0.8) ->
         Logger.info("dapp is dying. dapp address: #{dapp_addr}")
         :dying
 
@@ -148,7 +151,7 @@ defmodule ARP.Dapp do
 
         if (expired != 0 && now >= expired - one_day) ||
              (bind_expired != 0 && now >= bind_expired - one_day) ||
-             last_promise.amount >= amount * 0.8 do
+             (last_promise && last_promise.amount >= amount * 0.8) do
           Logger.info("dapp is dying or approval is not enough")
           {:check_expired_result, :dying}
         else
