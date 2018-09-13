@@ -13,7 +13,7 @@ defmodule ARP.Account do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def pay(dapp_addr, promise, device_addr) do
+  def pay(dapp_addr, promise, increment, device_addr) do
     self_addr = address()
     private_key = private_key()
 
@@ -21,7 +21,8 @@ defmodule ARP.Account do
          true <- Promise.verify(promise, dapp_addr, self_addr),
          promise = Promise.decode(promise),
          true <- check_dapp_amount(promise.amount, dapp_addr, self_addr),
-         {:ok, incremental_amount} <- Dapp.save_promise(DappPool.get(dapp_addr), promise) do
+         {:ok, incremental_amount} <-
+           Dapp.save_promise(DappPool.get(dapp_addr), promise, increment) do
       device_promise =
         calc_device_promise(incremental_amount, device_addr, self_addr, private_key)
 

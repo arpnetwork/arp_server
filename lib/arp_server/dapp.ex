@@ -59,9 +59,9 @@ defmodule ARP.Dapp do
     end
   end
 
-  def save_promise(pid, promise) do
+  def save_promise(pid, promise, increment) do
     if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:save_promise, promise})
+      GenServer.call(pid, {:save_promise, promise, increment})
     else
       {:error, :invalid_dapp}
     end
@@ -95,13 +95,13 @@ defmodule ARP.Dapp do
     {:reply, dapp.state, dapp}
   end
 
-  def handle_call({:save_promise, promise}, _from, dapp) do
+  def handle_call({:save_promise, promise, increment}, _from, dapp) do
     if dapp.state == @normal do
       case DappPromise.get(dapp.address) do
         nil ->
-          # first pay
+          # first pay or lost data
           DappPromise.set(dapp.address, promise)
-          {:reply, {:ok, promise.amount}, dapp}
+          {:reply, {:ok, increment}, dapp}
 
         last_promise ->
           if last_promise.cid == promise.cid && promise.amount > last_promise.amount do

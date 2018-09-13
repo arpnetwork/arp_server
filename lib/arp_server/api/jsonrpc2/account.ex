@@ -4,12 +4,13 @@ defmodule ARP.API.JSONRPC2.Account do
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, DappPromise, Promise, Utils}
 
-  def pay(promise, device_addr, nonce, sign) do
+  def pay(promise, amount, device_addr, nonce, sign) do
     private_key = Account.private_key()
     addr = Account.address()
 
-    with {:ok, dapp_addr} <- Protocol.verify(method(), [promise, device_addr], nonce, sign, addr),
-         :ok <- Account.pay(dapp_addr, promise, device_addr) do
+    with {:ok, dapp_addr} <-
+           Protocol.verify(method(), [promise, amount, device_addr], nonce, sign, addr),
+         :ok <- Account.pay(dapp_addr, promise, Utils.decode_hex(amount), device_addr) do
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
       res ->
