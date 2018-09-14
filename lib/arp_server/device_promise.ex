@@ -24,15 +24,17 @@ defmodule ARP.DevicePromise do
   end
 
   def get_all() do
-    :ets.match_object(__MODULE__, {:"$1", :"$2"})
+    :ets.tab2list(__MODULE__)
   end
 
   def set(device_addr, value) do
-    GenServer.call(__MODULE__, {:set, device_addr, value})
+    :ets.insert(__MODULE__, {device_addr, value})
+    write_file(__MODULE__)
   end
 
   def delete(device_addr) do
-    GenServer.call(__MODULE__, {:delete, device_addr})
+    :ets.delete(__MODULE__, device_addr)
+    write_file(__MODULE__)
   end
 
   def pay(device_address, promise) do
@@ -62,22 +64,15 @@ defmodule ARP.DevicePromise do
           tab
 
         _ ->
-          :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+          :ets.new(__MODULE__, [
+            :named_table,
+            :public,
+            write_concurrency: true,
+            read_concurrency: true
+          ])
       end
 
     {:ok, tab}
-  end
-
-  def handle_call({:set, device_addr, value}, _from, tab) do
-    :ets.insert(tab, {device_addr, value})
-    write_file(tab)
-    {:reply, :ok, tab}
-  end
-
-  def handle_call({:delete, device_addr}, _from, tab) do
-    :ets.delete(tab, device_addr)
-    write_file(tab)
-    {:reply, :ok, tab}
   end
 
   def write_file(tab) do
