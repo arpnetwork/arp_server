@@ -122,9 +122,9 @@ defmodule ARP.Init do
   defp check_dapp_bind(dapp_addr, info, private_key, server_addr) do
     %{id: cid, paid: paid} = Contract.bank_allowance(dapp_addr, server_addr)
 
-    if info["cid"] == cid && info["amount"] > paid do
+    if info.cid == cid && info.amount > paid do
       {:ok, %{"status" => "0x1"}} =
-        Contract.bank_cash(private_key, dapp_addr, server_addr, info["amount"], info["sign"])
+        Contract.bank_cash(private_key, dapp_addr, server_addr, info.amount, info.sign)
     end
 
     {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)

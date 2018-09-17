@@ -110,7 +110,7 @@ defmodule ARP.Device do
   def init(opts) do
     dev = opts[:device]
 
-    Process.send_after(self(), :check_interval, @check_interval)
+    Process.send_after(self(), :check_interval, 30_000)
 
     {:ok, %{address: dev.address, increasing: false}}
   end
@@ -186,7 +186,7 @@ defmodule ARP.Device do
     server_addr = ARP.Account.address()
     private_key = ARP.Account.private_key()
 
-    with %{"cid" => cid, "amount" => device_amount} <- ARP.DevicePromise.get(address),
+    with %{cid: cid, amount: device_amount} <- ARP.DevicePromise.get(address),
          %{id: allowance_cid, amount: current_amount, expired: expired} <-
            Contract.bank_allowance(server_addr, address) do
       approval_amount = ARP.Config.get(:device_deposit)
