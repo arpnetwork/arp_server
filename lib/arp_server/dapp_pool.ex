@@ -15,8 +15,18 @@ defmodule ARP.DappPool do
 
   def get(dapp_addr) do
     case :ets.lookup(__MODULE__, dapp_addr) do
-      [{_, pid}] ->
+      [{_, pid, _ip, _port}] ->
         pid
+
+      [] ->
+        nil
+    end
+  end
+
+  def get_item(dapp_addr) do
+    case :ets.lookup(__MODULE__, dapp_addr) do
+      [{_, pid, ip, port}] ->
+        {pid, ip, port}
 
       [] ->
         nil
@@ -53,6 +63,10 @@ defmodule ARP.DappPool do
     GenServer.call(__MODULE__, {:create, dapp_addr, init_state})
   end
 
+  def update(dapp_addr, ip, port) do
+    GenServer.call(__MODULE__, {:update, dapp_addr, ip, port})
+  end
+
   # Callbacks
 
   def init(_opts) do
@@ -81,7 +95,7 @@ defmodule ARP.DappPool do
         case create_inner(address, init_state) do
           {:ok, pid, ref} ->
             refs = Map.put(refs, ref, address)
-            :ets.insert(__MODULE__, {address, pid})
+            :ets.insert(__MODULE__, {address, pid, nil, nil})
             {:reply, {:ok, pid}, Map.put(state, :refs, refs)}
 
           err ->
@@ -93,10 +107,24 @@ defmodule ARP.DappPool do
     end
   end
 
+  def handle_call({:update, dapp_addr, ip, port}, _from, state) do
+    case get_item(dapp_addr) do
+      {pid, old_ip, _} ->
+        if is_nil(old_ip) || old_ip != ip do
+          :ets.insert(__MODULE__, {dapp_addr, pid, ip, port})
+        end
+
+        {:reply, :ok, state}
+
+      nil ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
   def handle_info(:check, state) do
     dapps = :ets.tab2list(__MODULE__)
 
-    Enum.each(dapps, fn {_, pid} ->
+    Enum.each(dapps, fn {_, pid, _, _} ->
       Process.send(pid, :check, [])
     end)
 
@@ -112,7 +140,7 @@ defmodule ARP.DappPool do
       case create_inner(address, nil) do
         {:ok, pid, ref} ->
           refs = Map.put(refs, ref, address)
-          :ets.insert(__MODULE__, {address, pid})
+          :ets.insert(__MODULE__, {address, pid, nil, nil})
           {:noreply, Map.put(state, :refs, refs)}
 
         _ ->

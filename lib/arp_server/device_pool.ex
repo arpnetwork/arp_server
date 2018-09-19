@@ -141,6 +141,7 @@ defmodule ARP.DevicePool do
     with {:ok, dev} <- find_device(%{price: price}),
          {pid, _dev} <- get(dev.address),
          :ok <- Device.allocating(pid, dapp_address),
+         :ok <- DappPool.update(dapp_address, ip, port),
          # prepare device
          :ok <- DeviceProtocol.user_request(dev.address, dapp_address, ip, port, price) do
       dev_info = %{
