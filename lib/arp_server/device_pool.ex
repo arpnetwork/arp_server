@@ -45,6 +45,11 @@ defmodule ARP.DevicePool do
     case get(address) do
       {pid, dev} ->
         Device.offline(pid, dev)
+
+        if Device.is_allocating?(dev) && !is_nil(dev.dapp_address) do
+          device_offline(address, dev.dapp_address)
+        end
+
         :ok
 
       _ ->
@@ -229,5 +234,42 @@ defmodule ARP.DevicePool do
       end)
 
     Enum.empty?(res)
+  end
+
+  defp device_offline(device_address, dapp_address) do
+    method = "device_offline"
+    sign_data = [device_address]
+
+    {_, ip, port} = ARP.DappPool.get_item(dapp_address)
+
+    case send_request(dapp_address, ip, port, method, sign_data) do
+      {:ok, _result} ->
+        :ok
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp send_request(dapp_address, ip, port, method, data) do
+    private_key = ARP.Account.private_key()
+    address = ARP.Account.address()
+
+    nonce = ARP.Nonce.get_and_update_nonce(address, dapp_address) |> ARP.Utils.encode_integer()
+    url = "http://#{ip}:#{port}"
+
+    sign = ARP.API.JSONRPC2.Protocol.sign(method, data, nonce, dapp_address, private_key)
+
+    case JSONRPC2.Client.HTTP.call(url, method, data ++ [nonce, sign]) do
+      {:ok, result} ->
+        if ARP.API.JSONRPC2.Protocol.verify_resp_sign(result, address, dapp_address) do
+          {:ok, result}
+        else
+          {:error, :verify_error}
+        end
+
+      {:error, err} ->
+        {:error, err}
+    end
   end
 end

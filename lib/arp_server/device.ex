@@ -220,6 +220,10 @@ defmodule ARP.Device do
     device.state == @idle
   end
 
+  def is_allocating?(device) do
+    device.state == @allocating
+  end
+
   def set_pending(device) do
     %{device | state: @pending}
   end
