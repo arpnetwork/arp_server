@@ -26,6 +26,7 @@ defmodule ARP.DappPromise do
 
   def delete(dapp_addr) do
     :ets.delete(__MODULE__, dapp_addr)
+    GenServer.cast(__MODULE__, :write)
   end
 
   def start_link(_opts) do
