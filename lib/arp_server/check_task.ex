@@ -1,6 +1,8 @@
 defmodule ARP.CheckTask do
   use Task, restart: :permanent
 
+  require Logger
+
   def start_link(_arg) do
     Task.start_link(__MODULE__, :run, [])
   end
@@ -44,7 +46,17 @@ defmodule ARP.CheckTask do
 
     if ip != 0 && expired != 0 && now > expired do
       if size == 0 do
-        Task.start(fn -> ARP.Contract.unregister(private_key) end)
+        Task.start(fn ->
+          with {:ok, %{"status" => "0x1"}} <- ARP.Contract.unregister(private_key),
+               value = ARP.Contract.bank_balance(server_addr),
+               {:ok, %{"status" => "0x1"}} <- ARP.Contract.bank_withdraw(private_key, value) do
+            Logger.info("unregister success, withdraw ARP to wallet from ARP Bank.")
+          else
+            e ->
+              Logger.error("unregister error")
+              Logger.error(inspect(e))
+          end
+        end)
       else
         Enum.each(device_list, fn device_addr ->
           %{server: server, expired: device_expired} =

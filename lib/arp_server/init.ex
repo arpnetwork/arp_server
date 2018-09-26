@@ -31,9 +31,9 @@ defmodule ARP.Init do
          %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
          Logger.info("registering..."),
          :ok <- check_eth_balance(addr),
-         :ok <- check_arp_balance(addr, deposit),
+         {:ok, add} <- check_arp_balance(addr, deposit),
          {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
-         {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, deposit),
+         {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, add),
          {:ok, %{"status" => "0x1"}} <-
            Contract.bank_approve(private_key, spender, base_deposit, 0),
          {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
@@ -111,9 +111,12 @@ defmodule ARP.Init do
 
   defp check_arp_balance(address, amount) do
     arp_balance = Contract.get_arp_balance(address)
+    bank_balance = Contract.bank_balance(address)
 
-    if arp_balance >= amount do
-      :ok
+    add = amount - bank_balance
+
+    if arp_balance >= add do
+      {:ok, add}
     else
       {:error, "arp balance is not enough!"}
     end
