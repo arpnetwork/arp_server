@@ -232,6 +232,31 @@ defmodule ARP.Contract do
     send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
 
+  def bank_withdraw(
+        private_key,
+        value,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    encoded_abi = ABI.encode("withdraw(uint256)", [value])
+
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  def bank_balance(owner) do
+    owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+
+    abi_encoded_data = ABI.encode("balanceOf(address)", [owner]) |> Base.encode16(case: :lower)
+
+    params = %{
+      data: "0x" <> abi_encoded_data,
+      to: @bank_contract
+    }
+
+    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
+    hex_string_to_integer(res)
+  end
+
   def bank_approve(
         private_key,
         spender,
