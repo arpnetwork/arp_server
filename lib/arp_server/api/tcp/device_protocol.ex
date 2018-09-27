@@ -27,6 +27,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_result_ver_err -1
   @cmd_result_verify_err -2
   @cmd_result_port_err -3
+  @cmd_result_max_load_err -4
 
   @timeout 60_000
   @speed_timeout 60_000
@@ -324,6 +325,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
     end
 
     cond do
+      ARP.DevicePool.size() >= ARP.Config.get(:max_load) ->
+        online_resp(socket, @cmd_result_max_load_err)
+        state.transport.close(socket)
+
       !device_addr ->
         online_resp(socket, @cmd_result_verify_err)
         state.transport.close(socket)
