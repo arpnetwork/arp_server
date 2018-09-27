@@ -289,6 +289,18 @@ defmodule ARP.API.TCP.DeviceProtocol do
         end
       end
 
+      # recover device promise when it is lost
+      with {:ok, %{id: cid, paid: paid}} when cid != 0 <-
+             ARP.Contract.bank_allowance(addr, device_addr) do
+        if paid > 0 do
+          info = ARP.DevicePromise.get(device_addr)
+
+          if info == nil || info.cid == 0 || cid != info.cid || paid > info.amount do
+            ARP.DevicePromise.set(device_addr, struct(ARP.Promise, %{cid: cid, amount: paid}))
+          end
+        end
+      end
+
       state
     else
       _ ->
