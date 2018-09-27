@@ -20,16 +20,19 @@ defmodule ARP.Contract do
   @doc """
   Get the eth balance by calling the rpc api of the block chain node.
   """
-  @spec get_eth_balance(String.t()) :: integer() | :error
+  @spec get_eth_balance(String.t()) :: {:ok, integer()} | {:error, any()}
   def get_eth_balance(address) do
-    {:ok, res} = Ethereumex.HttpClient.eth_get_balance(address)
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_get_balance(address) do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   @doc """
   Get the arp balance by calling the constract api.
   """
-  @spec get_arp_balance(String.t()) :: integer() | :error
+  @spec get_arp_balance(String.t()) :: {:ok, integer()} | {:error, any()}
   def get_arp_balance(address) do
     address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     abi_encoded_data = ABI.encode("balanceOf(address)", [address]) |> Base.encode16(case: :lower)
@@ -39,14 +42,17 @@ defmodule ARP.Contract do
       to: @token_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   @doc """
   Get allowance.
   """
-  @spec allowance(String.t()) :: integer()
+  @spec allowance(String.t()) :: {:ok, integer()} | {:error, any()}
   def allowance(owner) do
     owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     spender = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
@@ -59,8 +65,11 @@ defmodule ARP.Contract do
       to: @token_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   @doc """
@@ -105,7 +114,7 @@ defmodule ARP.Contract do
   @doc """
   Get registed info.
   """
-  @spec get_registered_info(String.t()) :: map()
+  @spec get_registered_info(String.t()) :: {:ok, map()} | {:error, any()}
   def get_registered_info(address) do
     address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("servers(address)", [address]) |> Base.encode16(case: :lower)
@@ -115,24 +124,28 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    res = if bit_size(res) != 1024, do: <<0::size(1024)>>, else: res
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+      res = if bit_size(res) != 1024, do: <<0::size(1024)>>, else: res
 
-    <<ip::size(256), port::size(256), size::size(256), expired::size(256)>> = res
+      <<ip::size(256), port::size(256), size::size(256), expired::size(256)>> = res
 
-    %{
-      ip: ip,
-      port: port,
-      size: size,
-      expired: expired
-    }
+      {:ok,
+       %{
+         ip: ip,
+         port: port,
+         size: size,
+         expired: expired
+       }}
+    else
+      err -> err
+    end
   end
 
   @doc """
   get device bind info
   """
-  @spec get_device_bind_info(String.t()) :: map()
+  @spec get_device_bind_info(String.t()) :: {:ok, map()} | {:error, any()}
   def get_device_bind_info(address) do
     address = address |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     address = (<<0>> |> :binary.copy(32 - byte_size(address))) <> address
@@ -143,18 +156,22 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+      res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
-    <<server::binary-size(32), expired::size(256)>> = res
+      <<server::binary-size(32), expired::size(256)>> = res
 
-    server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
+      server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
 
-    %{
-      server: "0x" <> server,
-      expired: expired
-    }
+      {:ok,
+       %{
+         server: "0x" <> server,
+         expired: expired
+       }}
+    else
+      err -> err
+    end
   end
 
   def get_dapp_bind_info(dapp_addr, server_addr) do
@@ -169,18 +186,22 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+      res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
-    <<server::binary-size(32), expired::size(256)>> = res
+      <<server::binary-size(32), expired::size(256)>> = res
 
-    server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
+      server = server |> binary_part(12, byte_size(server) - 12) |> Base.encode16(case: :lower)
 
-    %{
-      server: "0x" <> server,
-      expired: expired
-    }
+      {:ok,
+       %{
+         server: "0x" <> server,
+         expired: expired
+       }}
+    else
+      err -> err
+    end
   end
 
   def get_device_holding() do
@@ -191,8 +212,11 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   def unbind_device_by_server(
@@ -253,8 +277,11 @@ defmodule ARP.Contract do
       to: @bank_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   def bank_approve(
@@ -293,22 +320,26 @@ defmodule ARP.Contract do
       to: @bank_contract
     }
 
-    {:ok, res} = Ethereumex.HttpClient.eth_call(params)
-    res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    res = if bit_size(res) != 1280, do: <<0::size(1280)>>, else: res
+    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+      res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+      res = if bit_size(res) != 1280, do: <<0::size(1280)>>, else: res
 
-    <<id::size(256), amount::size(256), paid::size(256), expired::size(256),
-      proxy::binary-size(32)>> = res
+      <<id::size(256), amount::size(256), paid::size(256), expired::size(256),
+        proxy::binary-size(32)>> = res
 
-    proxy = proxy |> binary_part(12, byte_size(proxy) - 12) |> Base.encode16(case: :lower)
+      proxy = proxy |> binary_part(12, byte_size(proxy) - 12) |> Base.encode16(case: :lower)
 
-    %{
-      id: id,
-      amount: amount,
-      paid: paid,
-      expired: expired,
-      proxy: "0x" <> proxy
-    }
+      {:ok,
+       %{
+         id: id,
+         amount: amount,
+         paid: paid,
+         expired: expired,
+         proxy: "0x" <> proxy
+       }}
+    else
+      err -> err
+    end
   end
 
   def bank_increase_approval(
@@ -353,6 +384,7 @@ defmodule ARP.Contract do
     send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
   end
 
+  @spec get_bound_device(binary()) :: {:ok, any()} | {:error, atom() | binary() | map()}
   def get_bound_device(address) do
     bind_topic =
       "0x" <> Base.encode16(Crypto.keccak256("DeviceBound(address,address)"), case: :lower)
@@ -369,26 +401,32 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    {:ok, id} = Ethereumex.HttpClient.eth_new_filter(params)
-    {:ok, logs} = Ethereumex.HttpClient.eth_get_filter_logs(id)
-    Ethereumex.HttpClient.eth_uninstall_filter(id)
+    with {:ok, id} <- Ethereumex.HttpClient.eth_new_filter(params),
+         {:ok, logs} <- Ethereumex.HttpClient.eth_get_filter_logs(id),
+         {:ok, _} <- Ethereumex.HttpClient.eth_uninstall_filter(id) do
+      out =
+        Enum.reduce(logs, [], fn item, acc ->
+          if item["removed"] == false do
+            [topic, device, _] = item["topics"]
+            device = String.replace_prefix(device, "0x000000000000000000000000", "0x")
 
-    Enum.reduce(logs, [], fn item, acc ->
-      if item["removed"] == false do
-        [topic, device, _] = item["topics"]
-        device = String.replace_prefix(device, "0x000000000000000000000000", "0x")
+            if topic == bind_topic do
+              [device | acc]
+            else
+              List.delete(acc, device)
+            end
+          else
+            acc
+          end
+        end)
 
-        if topic == bind_topic do
-          [device | acc]
-        else
-          List.delete(acc, device)
-        end
-      else
-        acc
-      end
-    end)
+      {:ok, out}
+    else
+      err -> err
+    end
   end
 
+  @spec get_bound_dapp(binary()) :: {:ok, any()} | {:error, atom() | binary() | map()}
   def get_bound_dapp(address) do
     bind_topic =
       "0x" <> Base.encode16(Crypto.keccak256("AppBound(address,address)"), case: :lower)
@@ -405,24 +443,29 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    {:ok, id} = Ethereumex.HttpClient.eth_new_filter(params)
-    {:ok, logs} = Ethereumex.HttpClient.eth_get_filter_logs(id)
-    Ethereumex.HttpClient.eth_uninstall_filter(id)
+    with {:ok, id} <- Ethereumex.HttpClient.eth_new_filter(params),
+         {:ok, logs} <- Ethereumex.HttpClient.eth_get_filter_logs(id),
+         {:ok, _} <- Ethereumex.HttpClient.eth_uninstall_filter(id) do
+      out =
+        Enum.reduce(logs, [], fn item, acc ->
+          if item["removed"] == false do
+            [topic, dapp, _] = item["topics"]
+            dapp = String.replace_prefix(dapp, "0x000000000000000000000000", "0x")
 
-    Enum.reduce(logs, [], fn item, acc ->
-      if item["removed"] == false do
-        [topic, dapp, _] = item["topics"]
-        dapp = String.replace_prefix(dapp, "0x000000000000000000000000", "0x")
+            if topic == bind_topic do
+              [dapp | acc]
+            else
+              List.delete(acc, dapp)
+            end
+          else
+            acc
+          end
+        end)
 
-        if topic == bind_topic do
-          [dapp | acc]
-        else
-          List.delete(acc, dapp)
-        end
-      else
-        acc
-      end
-    end)
+      {:ok, out}
+    else
+      err -> err
+    end
   end
 
   @doc """
@@ -451,44 +494,52 @@ defmodule ARP.Contract do
     private_key = Base.decode16!(private_key, case: :mixed)
     contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
-    bt = %Blockchain.Transaction{
-      nonce: get_transaction_count(from),
-      gas_price: gas_price,
-      gas_limit: gas_limit,
-      to: contract,
-      value: 0,
-      v: 0,
-      r: 0,
-      s: 0,
-      init: <<>>,
-      data: encoded_abi
-    }
+    with {:ok, nonce} <- get_transaction_count(from) do
+      bt = %Blockchain.Transaction{
+        nonce: nonce,
+        gas_price: gas_price,
+        gas_limit: gas_limit,
+        to: contract,
+        value: 0,
+        v: 0,
+        r: 0,
+        s: 0,
+        init: <<>>,
+        data: encoded_abi
+      }
 
-    transaction_data =
-      bt
-      |> Blockchain.Transaction.Signature.sign_transaction(private_key, @chain_id)
-      |> Blockchain.Transaction.serialize()
-      |> ExRLP.encode()
-      |> Base.encode16(case: :lower)
+      transaction_data =
+        bt
+        |> Blockchain.Transaction.Signature.sign_transaction(private_key, @chain_id)
+        |> Blockchain.Transaction.serialize()
+        |> ExRLP.encode()
+        |> Base.encode16(case: :lower)
 
-    res = Ethereumex.HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
+      res = Ethereumex.HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
 
-    case res do
-      {:ok, tx_hash} ->
-        get_transaction_receipt(tx_hash, @receipt_attempts)
+      case res do
+        {:ok, tx_hash} ->
+          get_transaction_receipt(tx_hash, @receipt_attempts)
 
-      _ ->
-        res
+        _ ->
+          res
+      end
+    else
+      err -> err
     end
   end
 
   @doc """
   Get pending transaction count.
   """
-  @spec get_transaction_count(String.t()) :: integer()
+  @spec get_transaction_count(String.t()) ::
+          {:ok, integer()} | {:error, map() | binary() | atom()}
   def get_transaction_count(address) do
-    {:ok, res} = Ethereumex.HttpClient.eth_get_transaction_count(address, "pending")
-    hex_string_to_integer(res)
+    with {:ok, res} <- Ethereumex.HttpClient.eth_get_transaction_count(address, "pending") do
+      {:ok, hex_string_to_integer(res)}
+    else
+      err -> err
+    end
   end
 
   @doc """

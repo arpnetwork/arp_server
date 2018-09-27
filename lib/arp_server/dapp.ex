@@ -20,37 +20,41 @@ defmodule ARP.Dapp do
   def first_check(dapp_addr) do
     server_addr = Account.address()
 
-    %{id: id, expired: expired, proxy: proxy, amount: amount} =
-      Contract.bank_allowance(dapp_addr, server_addr)
+    with {:ok, %{id: id, expired: expired, proxy: proxy, amount: amount}} <-
+           Contract.bank_allowance(dapp_addr, server_addr),
+         {:ok, %{expired: bind_expired, server: server}} <-
+           Contract.get_dapp_bind_info(dapp_addr, server_addr) do
+      registry_addr = Application.get_env(:arp_server, :registry_contract_address)
 
-    %{expired: bind_expired, server: server} = Contract.get_dapp_bind_info(dapp_addr, server_addr)
-    registry_addr = Application.get_env(:arp_server, :registry_contract_address)
+      last_promise = DappPromise.get(dapp_addr)
 
-    last_promise = DappPromise.get(dapp_addr)
+      now = DateTime.utc_now() |> DateTime.to_unix()
+      one_day = 60 * 60 * 24
 
-    now = DateTime.utc_now() |> DateTime.to_unix()
-    one_day = 60 * 60 * 24
+      cond do
+        id == 0 || server != server_addr || proxy != registry_addr ->
+          Logger.info("dapp not approve or bind. dapp address: #{dapp_addr}")
+          DappPromise.delete(dapp_addr)
+          :error
 
-    cond do
-      id == 0 || server != server_addr || proxy != registry_addr ->
-        Logger.info("dapp not approve or bind. dapp address: #{dapp_addr}")
-        DappPromise.delete(dapp_addr)
+        id != 0 && last_promise && last_promise.cid != id ->
+          Logger.info("find invalid promise with old cid, delete it. dapp address: #{dapp_addr}")
+
+          DappPromise.delete(dapp_addr)
+          :normal
+
+        (expired != 0 && now >= expired - one_day) ||
+          (bind_expired != 0 && now >= bind_expired - one_day) ||
+            (last_promise && last_promise.amount >= amount * 0.8) ->
+          Logger.info("dapp is dying. dapp address: #{dapp_addr}")
+          :dying
+
+        true ->
+          :normal
+      end
+    else
+      _ ->
         :error
-
-      id != 0 && last_promise && last_promise.cid != id ->
-        Logger.info("find invalid promise with old cid, delete it. dapp address: #{dapp_addr}")
-
-        DappPromise.delete(dapp_addr)
-        :normal
-
-      (expired != 0 && now >= expired - one_day) ||
-        (bind_expired != 0 && now >= bind_expired - one_day) ||
-          (last_promise && last_promise.amount >= amount * 0.8) ->
-        Logger.info("dapp is dying. dapp address: #{dapp_addr}")
-        :dying
-
-      true ->
-        :normal
     end
   end
 
@@ -142,20 +146,26 @@ defmodule ARP.Dapp do
       Task.async(fn ->
         server_addr = Account.address()
 
-        %{amount: amount, expired: expired} = Contract.bank_allowance(dapp.address, server_addr)
-        %{expired: bind_expired} = Contract.get_dapp_bind_info(dapp.address, server_addr)
-        last_promise = DappPromise.get(dapp.address)
+        with {:ok, %{amount: amount, expired: expired}} <-
+               Contract.bank_allowance(dapp.address, server_addr),
+             {:ok, %{expired: bind_expired}} <-
+               Contract.get_dapp_bind_info(dapp.address, server_addr) do
+          last_promise = DappPromise.get(dapp.address)
 
-        now = DateTime.utc_now() |> DateTime.to_unix()
-        one_day = 60 * 60 * 24
+          now = DateTime.utc_now() |> DateTime.to_unix()
+          one_day = 60 * 60 * 24
 
-        if (expired != 0 && now >= expired - one_day) ||
-             (bind_expired != 0 && now >= bind_expired - one_day) ||
-             (last_promise && last_promise.amount >= amount * 0.8) do
-          Logger.info("dapp is dying or approval is not enough")
-          {:check_expired_result, :dying}
+          if (expired != 0 && now >= expired - one_day) ||
+               (bind_expired != 0 && now >= bind_expired - one_day) ||
+               (last_promise && last_promise.amount >= amount * 0.8) do
+            Logger.info("dapp is dying or approval is not enough")
+            {:check_expired_result, :dying}
+          else
+            {:check_expired_result, :ok}
+          end
         else
-          {:check_expired_result, :ok}
+          _ ->
+            {:check_expired_result, :ok}
         end
       end)
     end

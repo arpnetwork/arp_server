@@ -187,7 +187,7 @@ defmodule ARP.Device do
     private_key = ARP.Account.private_key()
 
     with %{cid: cid, amount: device_amount} <- ARP.DevicePromise.get(address),
-         %{id: allowance_cid, amount: current_amount, expired: expired} <-
+         {:ok, %{id: allowance_cid, amount: current_amount, expired: expired}} <-
            Contract.bank_allowance(server_addr, address) do
       approval_amount = ARP.Config.get(:device_deposit)
 

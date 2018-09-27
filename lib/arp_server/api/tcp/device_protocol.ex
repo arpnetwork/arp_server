@@ -254,15 +254,13 @@ defmodule ARP.API.TCP.DeviceProtocol do
     sign = data[:sign]
     promise = data[:promise]
 
-    {:ok, device_addr} = Crypto.eth_recover(salt, sign)
-
     # check device_addr valid
     private_key = Account.private_key()
     addr = Account.address()
 
-    device_bind = ARP.Contract.get_device_bind_info(device_addr)
-
-    if device_bind.server == addr do
+    with {:ok, device_addr} <- Crypto.eth_recover(salt, sign),
+         {:ok, %{server: server}} when server == addr <-
+           ARP.Contract.get_device_bind_info(device_addr) do
       state = Map.put(state, :device_addr, device_addr)
 
       send_sign = Crypto.eth_sign(salt, private_key)
@@ -293,8 +291,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       state
     else
-      device_verify_resp(socket, @cmd_result_verify_err)
-      state
+      _ ->
+        device_verify_resp(socket, @cmd_result_verify_err)
+        state
     end
   end
 
@@ -328,16 +327,22 @@ defmodule ARP.API.TCP.DeviceProtocol do
       !Store.has_key?(device_addr) ->
         Store.put(device_addr, self())
         addr = Account.address()
-        %{id: id} = ARP.Contract.bank_allowance(addr, device_addr)
-        device = struct(ARP.Device, data)
-        device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})
 
-        case ARP.DevicePool.online(device) do
-          :ok ->
-            online_resp(socket, @cmd_result_success)
+        with {:ok, %{id: id}} <- ARP.Contract.bank_allowance(addr, device_addr) do
+          device = struct(ARP.Device, data)
+          device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})
 
-          {:error, _reason} ->
-            Store.delete(device_addr)
+          case ARP.DevicePool.online(device) do
+            :ok ->
+              online_resp(socket, @cmd_result_success)
+
+            {:error, _reason} ->
+              Store.delete(device_addr)
+              state.transport.close(socket)
+          end
+        else
+          _ ->
+            online_resp(socket, @cmd_result_verify_err)
             state.transport.close(socket)
         end
 

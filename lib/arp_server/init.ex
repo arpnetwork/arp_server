@@ -28,7 +28,7 @@ defmodule ARP.Init do
     auth = ExPrompt.password("input your keystore password:") |> String.trim_trailing("\n")
 
     with {:ok, %{private_key: private_key, address: addr}} <- Account.set_key(keystore, auth),
-         %{ip: ip} when ip == 0 <- Contract.get_registered_info(addr),
+         {:ok, %{ip: ip}} when ip == 0 <- Contract.get_registered_info(addr),
          Logger.info("registering..."),
          :ok <- check_eth_balance(addr),
          {:ok, add} <- check_arp_balance(addr, deposit),
@@ -40,7 +40,7 @@ defmodule ARP.Init do
       Logger.info("arp server is running!")
       :ok
     else
-      %{ip: ip} when ip != 0 ->
+      {:ok, %{ip: ip}} when ip != 0 ->
         Logger.info("arp server is running!")
         :ok
 
@@ -63,28 +63,31 @@ defmodule ARP.Init do
     server_addr = Account.address()
     now = DateTime.utc_now() |> DateTime.to_unix()
 
-    server_info = Contract.get_registered_info(server_addr)
+    with {:ok, %{ip: ip, expired: expired}} <- Contract.get_registered_info(server_addr) do
+      cond do
+        ip != 0 && expired == 0 ->
+          {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
 
-    cond do
-      server_info.ip != 0 && server_info.expired == 0 ->
-        {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
+          # dapp
+          info = ARP.DappPromise.get_all()
+          Enum.each(info, fn {k, v} -> check_dapp_bind(k, v, private_key, server_addr) end)
 
-        # dapp
-        info = ARP.DappPromise.get_all()
-        Enum.each(info, fn {k, v} -> check_dapp_bind(k, v, private_key, server_addr) end)
+          # device
+          with {:ok, device_list} <- Contract.get_bound_device(server_addr) do
+            Enum.each(device_list, fn device_addr ->
+              check_device_bind(device_addr, private_key, server_addr)
+            end)
+          end
 
-        # device
-        device_list = Contract.get_bound_device(server_addr)
+        ip != 0 && expired != 0 && now > expired ->
+          {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
 
-        Enum.each(device_list, fn device_addr ->
-          check_device_bind(device_addr, private_key, server_addr)
-        end)
-
-      server_info.ip != 0 && server_info.expired != 0 && now > server_info.expired ->
-        {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
-
-      true ->
-        :ok
+        true ->
+          :ok
+      end
+    else
+      _ ->
+        :error
     end
   end
 
@@ -100,45 +103,47 @@ defmodule ARP.Init do
   end
 
   defp check_eth_balance(address) do
-    eth_balance = Contract.get_eth_balance(address)
-
-    if eth_balance >= round(1.0e18) do
+    with {:ok, eth_balance} when eth_balance >= round(1.0e18) <- Contract.get_eth_balance(address) do
       :ok
     else
-      {:error, "eth balance is not enough!"}
+      _ ->
+        {:error, "eth balance is not enough!"}
     end
   end
 
   defp check_arp_balance(address, amount) do
-    arp_balance = Contract.get_arp_balance(address)
-    bank_balance = Contract.bank_balance(address)
+    with {:ok, arp_balance} <- Contract.get_arp_balance(address),
+         {:ok, bank_balance} <- Contract.bank_balance(address) do
+      add = amount - bank_balance
 
-    add = amount - bank_balance
-
-    if arp_balance >= add do
-      {:ok, add}
+      if arp_balance >= add do
+        {:ok, add}
+      else
+        {:error, "arp balance is not enough!"}
+      end
     else
-      {:error, "arp balance is not enough!"}
+      _ ->
+        {:error, "arp balance is not enough!"}
     end
   end
 
   defp check_dapp_bind(dapp_addr, info, private_key, server_addr) do
-    %{id: cid, paid: paid} = Contract.bank_allowance(dapp_addr, server_addr)
+    with {:ok, %{id: cid, paid: paid}} <- Contract.bank_allowance(dapp_addr, server_addr) do
+      if info.cid == cid && info.amount > paid do
+        {:ok, %{"status" => "0x1"}} =
+          Contract.bank_cash(private_key, dapp_addr, server_addr, info.amount, info.sign)
+      end
 
-    if info.cid == cid && info.amount > paid do
-      {:ok, %{"status" => "0x1"}} =
-        Contract.bank_cash(private_key, dapp_addr, server_addr, info.amount, info.sign)
+      {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
+      ARP.DappPromise.delete(dapp_addr)
     end
-
-    {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
-    ARP.DappPromise.delete(dapp_addr)
   end
 
   defp check_device_bind(device_addr, private_key, server_addr) do
-    %{server: server, expired: expired} = Contract.get_device_bind_info(device_addr)
-
-    if server == server_addr && expired == 0 do
-      {:ok, %{"status" => "0x1"}} = Contract.unbind_device_by_server(private_key, device_addr)
+    with {:ok, %{server: server, expired: expired}} <- Contract.get_device_bind_info(device_addr) do
+      if server == server_addr && expired == 0 do
+        {:ok, %{"status" => "0x1"}} = Contract.unbind_device_by_server(private_key, device_addr)
+      end
     end
   end
 

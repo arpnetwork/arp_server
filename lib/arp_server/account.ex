@@ -94,12 +94,12 @@ defmodule ARP.Account do
   end
 
   defp check_dapp_amount(promise_amount, dapp_addr, server_addr) do
-    %{amount: amount} = Contract.bank_allowance(dapp_addr, server_addr)
-
-    if promise_amount <= amount do
+    with {:ok, %{amount: amount}} when promise_amount <= amount <-
+           Contract.bank_allowance(dapp_addr, server_addr) do
       true
     else
-      false
+      _ ->
+        false
     end
   end
 

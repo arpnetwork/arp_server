@@ -78,13 +78,11 @@ defmodule ARP.DappPool do
   end
 
   def handle_cast(:load_bound_dapp, state) do
-    dapp_list = Contract.get_bound_dapp(Account.address())
-
-    Task.start(fn ->
-      Enum.map(dapp_list, fn dapp_addr ->
-        create(dapp_addr, nil)
+    with {:ok, dapp_list} <- Contract.get_bound_dapp(Account.address()) do
+      Task.start(fn ->
+        Enum.map(dapp_list, fn dapp_addr -> create(dapp_addr, nil) end)
       end)
-    end)
+    end
 
     {:noreply, state}
   end
