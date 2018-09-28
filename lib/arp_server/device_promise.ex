@@ -29,12 +29,12 @@ defmodule ARP.DevicePromise do
 
   def set(device_addr, value) do
     :ets.insert(__MODULE__, {device_addr, value})
-    write_file(__MODULE__)
+    GenServer.cast(__MODULE__, :write)
   end
 
   def delete(device_addr) do
     :ets.delete(__MODULE__, device_addr)
-    write_file(__MODULE__)
+    GenServer.cast(__MODULE__, :write)
   end
 
   def pay(device_address, promise) do
@@ -72,11 +72,12 @@ defmodule ARP.DevicePromise do
           ])
       end
 
-    {:ok, tab}
+    {:ok, %{tab: tab}}
   end
 
-  def write_file(tab) do
+  def handle_cast(:write, %{tab: tab} = state) do
     :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+    {:noreply, state}
   end
 
   defp send_request(device_address, ip, port, method, data) do

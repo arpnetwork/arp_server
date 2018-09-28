@@ -16,11 +16,10 @@ defmodule ARP.Application do
       ]
     ]
 
-    ARP.Nonce.init()
-
     children = [
       {DynamicSupervisor, strategy: :one_for_one, name: ARP.DynamicSupervisor},
       ARP.Config,
+      ARP.Nonce,
       ARP.API.TCP.Store,
       ARP.Account,
       ARP.DevicePool,

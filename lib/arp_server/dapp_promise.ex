@@ -50,17 +50,11 @@ defmodule ARP.DappPromise do
           ])
       end
 
-    {:ok, %{tab: tab, wrote_at: 0}}
+    {:ok, %{tab: tab}}
   end
 
-  def handle_cast(:write, %{tab: tab, wrote_at: wrote_at} = state) do
-    now = DateTime.utc_now() |> DateTime.to_unix()
-
-    if now - wrote_at > 1 do
-      :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
-      {:noreply, %{state | wrote_at: now}}
-    else
-      {:noreply, state}
-    end
+  def handle_cast(:write, %{tab: tab} = state) do
+    :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+    {:noreply, state}
   end
 end
