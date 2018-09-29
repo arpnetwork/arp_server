@@ -40,7 +40,7 @@ defmodule ARP.Account do
     end
   rescue
     e ->
-      Logger.error(e)
+      Logger.error(inspect(e))
       {:error, :invalid_promise}
   end
 

@@ -49,7 +49,7 @@ defmodule ARP.Init do
         :error
 
       {:error, e} ->
-        Logger.error(e)
+        Logger.error(inspect(e))
         :error
 
       e ->
