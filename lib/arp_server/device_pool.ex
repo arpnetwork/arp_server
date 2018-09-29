@@ -59,8 +59,14 @@ defmodule ARP.DevicePool do
 
   def idle(address) do
     case get(address) do
-      {pid, _dev} ->
+      {pid, dev} ->
         Device.idle(pid)
+
+        if Device.is_allocating?(dev) && !is_nil(dev.dapp_address) do
+          device_offline(address, dev.dapp_address)
+        end
+
+        :ok
 
       _ ->
         {:error, :device_not_found}
