@@ -16,13 +16,16 @@ defmodule ARP.Contract do
   @receipt_attempts 40
 
   alias ARP.Crypto
+  alias Blockchain.Transaction
+  alias Blockchain.Transaction.Signature
+  alias Ethereumex.HttpClient
 
   @doc """
   Get the eth balance by calling the rpc api of the block chain node.
   """
   @spec get_eth_balance(String.t()) :: {:ok, integer()} | {:error, any()}
   def get_eth_balance(address) do
-    with {:ok, res} <- Ethereumex.HttpClient.eth_get_balance(address) do
+    with {:ok, res} <- HttpClient.eth_get_balance(address) do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -42,7 +45,7 @@ defmodule ARP.Contract do
       to: @token_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -65,7 +68,7 @@ defmodule ARP.Contract do
       to: @token_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -124,7 +127,7 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
       res = if bit_size(res) != 1024, do: <<0::size(1024)>>, else: res
 
@@ -156,7 +159,7 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
       res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
@@ -186,7 +189,7 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
       res = if bit_size(res) != 512, do: <<0::size(512)>>, else: res
 
@@ -212,7 +215,7 @@ defmodule ARP.Contract do
       to: @registry_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -277,7 +280,7 @@ defmodule ARP.Contract do
       to: @bank_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -320,7 +323,7 @@ defmodule ARP.Contract do
       to: @bank_contract
     }
 
-    with {:ok, res} <- Ethereumex.HttpClient.eth_call(params) do
+    with {:ok, res} <- HttpClient.eth_call(params) do
       res = res |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
       res = if bit_size(res) != 1280, do: <<0::size(1280)>>, else: res
 
@@ -401,9 +404,9 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    with {:ok, id} <- Ethereumex.HttpClient.eth_new_filter(params),
-         {:ok, logs} <- Ethereumex.HttpClient.eth_get_filter_logs(id),
-         {:ok, _} <- Ethereumex.HttpClient.eth_uninstall_filter(id) do
+    with {:ok, id} <- HttpClient.eth_new_filter(params),
+         {:ok, logs} <- HttpClient.eth_get_filter_logs(id),
+         {:ok, _} <- HttpClient.eth_uninstall_filter(id) do
       out =
         Enum.reduce(logs, [], fn item, acc ->
           if item["removed"] == false do
@@ -443,9 +446,9 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    with {:ok, id} <- Ethereumex.HttpClient.eth_new_filter(params),
-         {:ok, logs} <- Ethereumex.HttpClient.eth_get_filter_logs(id),
-         {:ok, _} <- Ethereumex.HttpClient.eth_uninstall_filter(id) do
+    with {:ok, id} <- HttpClient.eth_new_filter(params),
+         {:ok, logs} <- HttpClient.eth_get_filter_logs(id),
+         {:ok, _} <- HttpClient.eth_uninstall_filter(id) do
       out =
         Enum.reduce(logs, [], fn item, acc ->
           if item["removed"] == false do
@@ -510,12 +513,12 @@ defmodule ARP.Contract do
 
       transaction_data =
         bt
-        |> Blockchain.Transaction.Signature.sign_transaction(private_key, @chain_id)
-        |> Blockchain.Transaction.serialize()
+        |> Signature.sign_transaction(private_key, @chain_id)
+        |> Transaction.serialize()
         |> ExRLP.encode()
         |> Base.encode16(case: :lower)
 
-      res = Ethereumex.HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
+      res = HttpClient.eth_send_raw_transaction("0x" <> transaction_data)
 
       case res do
         {:ok, tx_hash} ->
@@ -535,7 +538,7 @@ defmodule ARP.Contract do
   @spec get_transaction_count(String.t()) ::
           {:ok, integer()} | {:error, map() | binary() | atom()}
   def get_transaction_count(address) do
-    with {:ok, res} <- Ethereumex.HttpClient.eth_get_transaction_count(address, "pending") do
+    with {:ok, res} <- HttpClient.eth_get_transaction_count(address, "pending") do
       {:ok, hex_string_to_integer(res)}
     else
       err -> err
@@ -562,7 +565,7 @@ defmodule ARP.Contract do
 
   def get_transaction_receipt(tx_hash, attempts, _) do
     Process.sleep(@receipt_block_time)
-    res = Ethereumex.HttpClient.eth_get_transaction_receipt(tx_hash)
+    res = HttpClient.eth_get_transaction_receipt(tx_hash)
     get_transaction_receipt(tx_hash, attempts - 1, res)
   end
 

@@ -42,7 +42,8 @@ defmodule ARP.MixProject do
       {:keccakf1600, "~> 2.0", hex: :keccakf1600_orig},
       {:pbkdf2, "~> 2.0"},
       {:erlscrypt, git: "git://github.com/K2InformaticsGmbH/erlscrypt.git"},
-      {:ex_prompt, "~> 0.1.3"}
+      {:ex_prompt, "~> 0.1.3"},
+      {:credo, "~> 0.10.0", only: [:dev, :test], runtime: false}
     ]
   end
 

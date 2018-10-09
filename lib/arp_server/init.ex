@@ -3,7 +3,7 @@ defmodule ARP.Init do
   Initialize server
   """
 
-  alias ARP.{Account, Config, Contract}
+  alias ARP.{Account, Config, Contract, DappPromise, Utils}
 
   require Logger
 
@@ -17,7 +17,7 @@ defmodule ARP.Init do
     end
 
     base_deposit = Config.get(:base_deposit)
-    config_ip = Config.get(:ip) |> ARP.Utils.ip_to_integer()
+    config_ip = Config.get(:ip) |> Utils.ip_to_integer()
     port = Config.get(:port)
     deposit = Config.get(:deposit)
     spender = Application.get_env(:arp_server, :registry_contract_address)
@@ -69,7 +69,7 @@ defmodule ARP.Init do
           {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
 
           # dapp
-          info = ARP.DappPromise.get_all()
+          info = DappPromise.get_all()
           Enum.each(info, fn {k, v} -> check_dapp_bind(k, v, private_key, server_addr) end)
 
           # device
@@ -135,7 +135,7 @@ defmodule ARP.Init do
       end
 
       {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
-      ARP.DappPromise.delete(dapp_addr)
+      DappPromise.delete(dapp_addr)
     end
   end
 

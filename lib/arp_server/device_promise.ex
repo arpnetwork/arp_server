@@ -1,7 +1,7 @@
 defmodule ARP.DevicePromise do
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
-  alias ARP.{Account, Promise}
+  alias ARP.{Account, DevicePool, Nonce, Promise, Utils}
 
   use GenServer
 
@@ -44,7 +44,7 @@ defmodule ARP.DevicePromise do
     method = "account_pay"
     sign_data = [promise_data]
 
-    {_pid, %{ip: ip, port: port}} = ARP.DevicePool.get(device_address)
+    {_pid, %{ip: ip, port: port}} = DevicePool.get(device_address)
 
     case send_request(device_address, ip, port + 1, method, sign_data) do
       {:ok, _result} ->
@@ -84,7 +84,7 @@ defmodule ARP.DevicePromise do
     private_key = Account.private_key()
     address = Account.address()
 
-    nonce = ARP.Nonce.get_and_update_nonce(address, device_address) |> ARP.Utils.encode_integer()
+    nonce = Nonce.get_and_update_nonce(address, device_address) |> Utils.encode_integer()
     url = "http://#{ip}:#{port}"
 
     sign = Protocol.sign(method, data, nonce, device_address, private_key)

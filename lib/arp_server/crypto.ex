@@ -123,7 +123,6 @@ defmodule ARP.Crypto do
       if calc_mac == mac do
         case keystore[:version] do
           1 ->
-            # TODO: need test
             {:ok,
              aes_cbc_decrypt(
                String.slice(derived_key, 0, 16) |> keccak256() |> String.slice(0, 16),

@@ -3,7 +3,7 @@ defmodule ARP.Account do
   Manage server account
   """
 
-  alias ARP.{Config, Crypto, Dapp, DappPool, Promise, Contract, DevicePromise}
+  alias ARP.{Config, Crypto, Dapp, DappPool, DevicePool, Promise, Contract, DevicePromise}
 
   require Logger
 
@@ -105,7 +105,7 @@ defmodule ARP.Account do
 
   defp calc_device_promise(incremental_amount, device_addr, server_addr, private_key) do
     # calc device amount and promise
-    {_pid, %{cid: device_cid}} = ARP.DevicePool.get(device_addr)
+    {_pid, %{cid: device_cid}} = DevicePool.get(device_addr)
     device_promise = DevicePromise.get(device_addr)
 
     last_device_amount =

@@ -1,6 +1,8 @@
 defmodule ARP.DevicePool do
-  alias ARP.{Device, DappPool, DeviceNetSpeed}
+  alias ARP.{Account, Device, DappPool, DeviceNetSpeed, Nonce, Utils}
   alias ARP.API.TCP.DeviceProtocol
+  alias ARP.API.JSONRPC2.Protocol
+  alias JSONRPC2.Client.HTTP
 
   use GenServer
 
@@ -246,7 +248,7 @@ defmodule ARP.DevicePool do
     method = "device_offline"
     sign_data = [device_address]
 
-    {_, ip, port} = ARP.DappPool.get_item(dapp_address)
+    {_, ip, port} = DappPool.get_item(dapp_address)
 
     case send_request(dapp_address, ip, port, method, sign_data) do
       {:ok, _result} ->
@@ -258,17 +260,17 @@ defmodule ARP.DevicePool do
   end
 
   defp send_request(dapp_address, ip, port, method, data) do
-    private_key = ARP.Account.private_key()
-    address = ARP.Account.address()
+    private_key = Account.private_key()
+    address = Account.address()
 
-    nonce = ARP.Nonce.get_and_update_nonce(address, dapp_address) |> ARP.Utils.encode_integer()
+    nonce = Nonce.get_and_update_nonce(address, dapp_address) |> Utils.encode_integer()
     url = "http://#{ip}:#{port}"
 
-    sign = ARP.API.JSONRPC2.Protocol.sign(method, data, nonce, dapp_address, private_key)
+    sign = Protocol.sign(method, data, nonce, dapp_address, private_key)
 
-    case JSONRPC2.Client.HTTP.call(url, method, data ++ [nonce, sign]) do
+    case HTTP.call(url, method, data ++ [nonce, sign]) do
       {:ok, result} ->
-        if ARP.API.JSONRPC2.Protocol.verify_resp_sign(result, address, dapp_address) do
+        if Protocol.verify_resp_sign(result, address, dapp_address) do
           {:ok, result}
         else
           {:error, :verify_error}

@@ -3,8 +3,9 @@ defmodule ARP.Device do
   Record online device.
   """
 
-  alias ARP.{DevicePool, DeviceNetSpeed, Contract}
+  alias ARP.{Account, Config, DevicePool, DeviceNetSpeed, DevicePromise, Contract}
   alias ARP.API.TCP.DeviceProtocol
+  alias JSONRPC2.Client.HTTP
 
   use GenServer, restart: :temporary
 
@@ -52,8 +53,8 @@ defmodule ARP.Device do
     with {:ok, socket} <- :gen_tcp.connect(ip, tcp_port, [active: false], 5000),
          {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
          :gen_tcp.close(socket),
-         JSONRPC2.Client.HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []),
-         {:ok, _} <- JSONRPC2.Client.HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []) do
+         HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []),
+         {:ok, _} <- HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []) do
       :ok
     else
       {{_, _}, socket} ->
@@ -183,13 +184,13 @@ defmodule ARP.Device do
     pid = self()
     Process.send_after(pid, :check_interval, @check_interval)
 
-    server_addr = ARP.Account.address()
-    private_key = ARP.Account.private_key()
+    server_addr = Account.address()
+    private_key = Account.private_key()
 
-    with %{cid: cid, amount: device_amount} <- ARP.DevicePromise.get(address),
+    with %{cid: cid, amount: device_amount} <- DevicePromise.get(address),
          {:ok, %{id: allowance_cid, amount: current_amount, expired: expired}} <-
            Contract.bank_allowance(server_addr, address) do
-      approval_amount = ARP.Config.get(:device_deposit)
+      approval_amount = Config.get(:device_deposit)
 
       if increasing == false && cid == allowance_cid &&
            device_amount > round(current_amount * 0.8) do

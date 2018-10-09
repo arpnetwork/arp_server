@@ -5,6 +5,7 @@ defmodule ARP.DeviceNetSpeed do
   require Logger
 
   alias ARP.{Config, DevicePool}
+  alias ARP.API.TCP.DeviceProtocol
 
   use GenServer
 
@@ -111,7 +112,7 @@ defmodule ARP.DeviceNetSpeed do
 
             state =
               cond do
-                length(device_ids) == 0 && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
+                Enum.empty?(device_ids) && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
                   Map.delete(state, ip)
 
                 length(device_ids) > 0 && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
@@ -126,7 +127,7 @@ defmodule ARP.DeviceNetSpeed do
             # offline device is testing, test next ip
             start_speed_test(state)
 
-          length(device_ids) == 0 ->
+          Enum.empty?(device_ids) ->
             timeout = DateTime.utc_now() |> DateTime.to_unix() |> Kernel.+(@speed_timeout)
             %{state | timeout: Map.put(state[:timeout], ip, timeout)}
 
@@ -195,7 +196,7 @@ defmodule ARP.DeviceNetSpeed do
         {ip, device_id} = next
 
         # notify ARP.API.TCP.DeviceProtocol to start test speed
-        ARP.API.TCP.DeviceProtocol.speed_test(device_id)
+        DeviceProtocol.speed_test(device_id)
 
         %{state | testing: Map.put(state[:testing], ip, device_id), queue: new_queue}
       else

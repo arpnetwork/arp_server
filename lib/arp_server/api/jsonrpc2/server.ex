@@ -2,16 +2,16 @@ defmodule ARP.API.JSONRPC2.Server do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.Account
+  alias ARP.{Account, Server}
 
   def info() do
-    Protocol.response(ARP.Server.info())
+    Protocol.response(Server.info())
   end
 
   def bind_promise(spender) do
     private_key = Account.private_key()
 
-    case ARP.Server.get_bind_promise(spender) do
+    case Server.get_bind_promise(spender) do
       {:ok, resp} ->
         Protocol.response(resp, spender, private_key)
 

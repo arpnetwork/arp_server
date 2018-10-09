@@ -4,7 +4,18 @@ defmodule ARP.API.TCP.DeviceProtocol do
   """
 
   alias ARP.API.TCP.Store
-  alias ARP.{Account, Crypto, Promise}
+
+  alias ARP.{
+    Account,
+    Contract,
+    Config,
+    Crypto,
+    Device,
+    DevicePool,
+    DeviceNetSpeed,
+    DevicePromise,
+    Promise
+  }
 
   use GenServer
 
@@ -98,7 +109,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     # Delete device info
     addr = device_addr()
     Store.delete(addr)
-    ARP.DevicePool.offline(addr)
+    DevicePool.offline(addr)
   end
 
   @doc """
@@ -193,7 +204,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       ip = get_ip(socket)
       # set final speed
-      ARP.DeviceNetSpeed.set(ip, ul_speed, dl_speed)
+      DeviceNetSpeed.set(ip, ul_speed, dl_speed)
 
       :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
@@ -261,7 +272,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
     with {:ok, device_addr} <- Crypto.eth_recover(salt, sign),
          {:ok, %{server: server}} when server == addr <-
-           ARP.Contract.get_device_bind_info(device_addr) do
+           Contract.get_device_bind_info(device_addr) do
       state = Map.put(state, :device_addr, device_addr)
 
       send_sign = Crypto.eth_sign(salt, private_key)
@@ -281,23 +292,23 @@ defmodule ARP.API.TCP.DeviceProtocol do
           )
 
         if result do
-          info = ARP.DevicePromise.get(device_addr)
+          info = DevicePromise.get(device_addr)
 
           if info == nil || info.cid == 0 ||
                (promise.cid == info.cid && promise.amount > info.amount) do
-            ARP.DevicePromise.set(device_addr, promise)
+            DevicePromise.set(device_addr, promise)
           end
         end
       end
 
       # recover device promise when it is lost
       with {:ok, %{id: cid, paid: paid}} when cid != 0 <-
-             ARP.Contract.bank_allowance(addr, device_addr) do
+             Contract.bank_allowance(addr, device_addr) do
         if paid > 0 do
-          info = ARP.DevicePromise.get(device_addr)
+          info = DevicePromise.get(device_addr)
 
           if info == nil || info.cid == 0 || cid != info.cid || paid > info.amount do
-            ARP.DevicePromise.set(device_addr, struct(ARP.Promise, %{cid: cid, amount: paid}))
+            DevicePromise.set(device_addr, struct(ARP.Promise, %{cid: cid, amount: paid}))
           end
         end
       end
@@ -321,11 +332,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
       pid = Store.get(device_addr)
       repeat_connect_offline(pid, device_addr)
       Store.delete(device_addr)
-      ARP.DevicePool.offline(device_addr)
+      DevicePool.offline(device_addr)
     end
 
     cond do
-      ARP.DevicePool.size() >= ARP.Config.get(:max_load) ->
+      DevicePool.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
         state.transport.close(socket)
 
@@ -337,7 +348,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         online_resp(socket, @cmd_result_ver_err)
         state.transport.close(socket)
 
-      :error == ARP.Device.check_port(ip, data[:port], data[:port] + 1) ->
+      :error == Device.check_port(ip, data[:port], data[:port] + 1) ->
         online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
 
@@ -345,11 +356,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
         Store.put(device_addr, self())
         addr = Account.address()
 
-        with {:ok, %{id: id}} <- ARP.Contract.bank_allowance(addr, device_addr) do
+        with {:ok, %{id: id}} <- Contract.bank_allowance(addr, device_addr) do
           device = struct(ARP.Device, data)
           device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})
 
-          case ARP.DevicePool.online(device) do
+          case DevicePool.online(device) do
             :ok ->
               online_resp(socket, @cmd_result_success)
 
@@ -378,7 +389,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   defp idle() do
     addr = device_addr()
-    ARP.DevicePool.idle(addr)
+    DevicePool.idle(addr)
   end
 
   # Send online respone to device

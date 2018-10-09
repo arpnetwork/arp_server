@@ -1,6 +1,9 @@
 defmodule ARP.Application do
   @moduledoc false
 
+  alias Plug.Adapters.Cowboy2
+  alias ARP.{DappPool, Init}
+
   use Application
 
   @tcp_port Application.get_env(:arp_server, :port)
@@ -35,7 +38,7 @@ defmodule ARP.Application do
         ARP.API.TCP.DeviceProtocol,
         []
       ),
-      Plug.Adapters.Cowboy2.child_spec(
+      Cowboy2.child_spec(
         scheme: :http,
         plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
         options: [port: @jsonrpc_port]
@@ -47,9 +50,9 @@ defmodule ARP.Application do
     {:ok, pid} = Supervisor.start_link(children, opts)
 
     # initialize
-    case ARP.Init.init() do
+    case Init.init() do
       :ok ->
-        ARP.DappPool.load_bound_dapp()
+        DappPool.load_bound_dapp()
         {:ok, pid}
 
       :error ->
