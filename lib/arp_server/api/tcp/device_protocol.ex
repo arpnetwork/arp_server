@@ -7,12 +7,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   alias ARP.{
     Account,
-    Contract,
     Config,
+    Contract,
     Crypto,
     Device,
-    DevicePool,
     DeviceNetSpeed,
+    DevicePool,
     DevicePromise,
     Promise
   }
@@ -387,7 +387,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     state
   end
 
-  defp idle() do
+  defp idle do
     addr = device_addr()
     DevicePool.idle(addr)
   end
@@ -442,7 +442,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   end
 
   # Return device address
-  defp device_addr() do
+  defp device_addr do
     Store.get(self())
   end
 

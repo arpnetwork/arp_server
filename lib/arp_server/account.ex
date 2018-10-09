@@ -3,7 +3,7 @@ defmodule ARP.Account do
   Manage server account
   """
 
-  alias ARP.{Config, Crypto, Dapp, DappPool, DevicePool, Promise, Contract, DevicePromise}
+  alias ARP.{Config, Contract, Crypto, Dapp, DappPool, DevicePool, DevicePromise, Promise}
 
   require Logger
 

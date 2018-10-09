@@ -1,4 +1,6 @@
 defmodule ARP.DevicePromise do
+  @moduledoc false
+
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
   alias ARP.{Account, DevicePool, Nonce, Promise, Utils}
@@ -23,7 +25,7 @@ defmodule ARP.DevicePromise do
     end
   end
 
-  def get_all() do
+  def get_all do
     :ets.tab2list(__MODULE__)
   end
 

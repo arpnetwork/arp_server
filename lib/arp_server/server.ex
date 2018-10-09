@@ -1,9 +1,9 @@
 defmodule ARP.Server do
   @moduledoc false
 
-  alias ARP.{Account, Contract, Config, Crypto, DevicePool, Utils}
+  alias ARP.{Account, Config, Contract, Crypto, DevicePool, Utils}
 
-  def info() do
+  def info do
     addr = Account.address()
 
     %{

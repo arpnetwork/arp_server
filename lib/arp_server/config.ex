@@ -62,7 +62,7 @@ defmodule ARP.Config do
     GenServer.cast(__MODULE__, {:set_keystore, keystore})
   end
 
-  def get_keystore() do
+  def get_keystore do
     case :ets.lookup(__MODULE__, :keystore) do
       [{:keystore, value}] ->
         value

@@ -1,4 +1,6 @@
 defmodule ARP.API.JSONRPC2.Nonce do
+  @moduledoc false
+
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, Nonce, Utils}
 

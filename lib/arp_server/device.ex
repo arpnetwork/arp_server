@@ -3,7 +3,7 @@ defmodule ARP.Device do
   Record online device.
   """
 
-  alias ARP.{Account, Config, DevicePool, DeviceNetSpeed, DevicePromise, Contract}
+  alias ARP.{Account, Config, Contract, DeviceNetSpeed, DevicePool, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
   alias JSONRPC2.Client.HTTP
 

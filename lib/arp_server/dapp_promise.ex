@@ -1,4 +1,6 @@
 defmodule ARP.DappPromise do
+  @moduledoc false
+
   use GenServer
 
   @file_path Application.get_env(:arp_server, :data_dir)
@@ -20,7 +22,7 @@ defmodule ARP.DappPromise do
     end
   end
 
-  def get_all() do
+  def get_all do
     :ets.tab2list(__MODULE__)
   end
 

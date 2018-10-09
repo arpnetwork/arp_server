@@ -1,7 +1,7 @@
 defmodule ARP.API.JSONRPC2.Protocol do
-  alias ARP.Nonce
-  alias ARP.Crypto
-  alias ARP.Utils
+  @moduledoc false
+
+  alias ARP.{Crypto, Nonce, Utils}
 
   def verify(method, params, nonce, sign, self_addr) do
     decoded_nonce = Utils.decode_hex(nonce)

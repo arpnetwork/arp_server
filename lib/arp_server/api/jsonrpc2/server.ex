@@ -1,10 +1,12 @@
 defmodule ARP.API.JSONRPC2.Server do
+  @moduledoc false
+
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, Server}
 
-  def info() do
+  def info do
     Protocol.response(Server.info())
   end
 

@@ -1,4 +1,6 @@
 defmodule ARP.API.JSONRPC2.Device do
+  @moduledoc false
+
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol

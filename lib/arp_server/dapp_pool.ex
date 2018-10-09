@@ -33,11 +33,11 @@ defmodule ARP.DappPool do
     end
   end
 
-  def get_all() do
+  def get_all do
     :ets.tab2list(__MODULE__)
   end
 
-  def load_bound_dapp() do
+  def load_bound_dapp do
     GenServer.cast(__MODULE__, :load_bound_dapp)
   end
 

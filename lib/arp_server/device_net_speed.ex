@@ -4,8 +4,8 @@ defmodule ARP.DeviceNetSpeed do
   """
   require Logger
 
-  alias ARP.{Config, DevicePool}
   alias ARP.API.TCP.DeviceProtocol
+  alias ARP.{Config, DevicePool}
 
   use GenServer
 

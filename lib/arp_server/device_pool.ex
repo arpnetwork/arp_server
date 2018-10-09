@@ -1,7 +1,9 @@
 defmodule ARP.DevicePool do
-  alias ARP.{Account, Device, DappPool, DeviceNetSpeed, Nonce, Utils}
-  alias ARP.API.TCP.DeviceProtocol
+  @moduledoc false
+
+  alias ARP.{Account, DappPool, Device, DeviceNetSpeed, Nonce, Utils}
   alias ARP.API.JSONRPC2.Protocol
+  alias ARP.API.TCP.DeviceProtocol
   alias JSONRPC2.Client.HTTP
 
   use GenServer
@@ -17,7 +19,7 @@ defmodule ARP.DevicePool do
     end
   end
 
-  def get_all() do
+  def get_all do
     :ets.tab2list(__MODULE__)
   end
 

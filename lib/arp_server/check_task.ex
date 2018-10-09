@@ -1,4 +1,6 @@
 defmodule ARP.CheckTask do
+  @moduledoc false
+
   alias ARP.{Account, Contract, DevicePromise}
 
   use Task, restart: :permanent
@@ -9,7 +11,7 @@ defmodule ARP.CheckTask do
     Task.start_link(__MODULE__, :run, [])
   end
 
-  def run() do
+  def run do
     loop_time = 1000 * 60 * 60
     Process.sleep(loop_time)
 

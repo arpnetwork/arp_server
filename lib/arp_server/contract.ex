@@ -207,7 +207,7 @@ defmodule ARP.Contract do
     end
   end
 
-  def get_device_holding() do
+  def get_device_holding do
     encoded_abi = ABI.encode("DEVICE_HOLDING()", []) |> Base.encode16(case: :lower)
 
     params = %{
