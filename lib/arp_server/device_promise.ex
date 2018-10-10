@@ -86,7 +86,7 @@ defmodule ARP.DevicePromise do
     private_key = Account.private_key()
     address = Account.address()
 
-    nonce = Nonce.get_and_update_nonce(address, device_address) |> Utils.encode_integer()
+    nonce = address |> Nonce.get_and_update_nonce(device_address) |> Utils.encode_integer()
     url = "http://#{ip}:#{port}"
 
     sign = Protocol.sign(method, data, nonce, device_address, private_key)

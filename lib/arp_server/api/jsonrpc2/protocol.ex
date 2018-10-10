@@ -13,7 +13,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
       {:ok, address}
     else
       {:error, reason} when is_atom(reason) ->
-        msg = Atom.to_string(reason) |> String.capitalize() |> String.replace("_", " ")
+        msg = reason |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
         {:error, msg}
 
       _ ->
@@ -29,7 +29,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
       {:ok, address}
     else
       {:error, reason} when is_atom(reason) ->
-        msg = Atom.to_string(reason) |> String.capitalize() |> String.replace("_", " ")
+        msg = reason |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
         {:error, msg}
 
       _ ->
@@ -58,7 +58,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
   def response({:error, msg}) do
     new_msg =
       if is_atom(msg) do
-        Atom.to_string(msg) |> String.capitalize() |> String.replace("_", " ")
+        msg |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
       end
 
     {:invalid_params, new_msg || msg}

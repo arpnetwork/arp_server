@@ -215,17 +215,18 @@ defmodule ARP.Dapp do
       # release devices
       DevicePool.release_by_dapp(address)
 
-      if promise do
-        server_addr = Account.address()
-        private_key = Account.private_key()
+      with false <- is_nil(promise),
+           server_addr = Account.address(),
+           private_key = Account.private_key(),
+           {:ok, %{"status" => "0x1"}} <-
+             Contract.bank_cash(private_key, address, server_addr, promise.amount, promise.sign) do
+        {:do_expire_result, :success}
+      else
+        true ->
+          nil
 
-        case Contract.bank_cash(private_key, address, server_addr, promise.amount, promise.sign) do
-          {:ok, %{"status" => "0x1"}} ->
-            {:do_expire_result, :success}
-
-          _ ->
-            {:do_expire_result, :failure}
-        end
+        _ ->
+          {:do_expire_result, :failure}
       end
     end)
   end

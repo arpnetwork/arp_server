@@ -38,7 +38,7 @@ defmodule ARP.API.TCP.Store do
   end
 
   def put(key, value) do
-    Agent.update(__MODULE__, &(Map.put(&1, key, value) |> Map.put(value, key)))
+    Agent.update(__MODULE__, &(&1 |> Map.put(key, value) |> Map.put(value, key)))
   end
 
   def delete(key) do

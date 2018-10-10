@@ -280,25 +280,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       # check promise
       if promise != nil do
-        promise = Poison.decode!(promise, as: %Promise{}) |> Promise.decode()
-
-        result =
-          check_recover_promise(
-            promise.cid,
-            addr,
-            device_addr,
-            promise.amount,
-            promise.sign
-          )
-
-        if result do
-          info = DevicePromise.get(device_addr)
-
-          if info == nil || info.cid == 0 ||
-               (promise.cid == info.cid && promise.amount > info.amount) do
-            DevicePromise.set(device_addr, promise)
-          end
-        end
+        check_promise(promise, addr, device_addr)
       end
 
       # recover device promise when it is lost
@@ -356,21 +338,15 @@ defmodule ARP.API.TCP.DeviceProtocol do
         Store.put(device_addr, self())
         addr = Account.address()
 
-        with {:ok, %{id: id}} <- Contract.bank_allowance(addr, device_addr) do
-          device = struct(ARP.Device, data)
-          device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id})
-
-          case DevicePool.online(device) do
-            :ok ->
-              online_resp(socket, @cmd_result_success)
-
-            {:error, _reason} ->
-              Store.delete(device_addr)
-              state.transport.close(socket)
-          end
+        with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
+             device = struct(ARP.Device, data),
+             device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id}),
+             :ok <- DevicePool.online(device) do
+          online_resp(socket, @cmd_result_success)
         else
           _ ->
             online_resp(socket, @cmd_result_verify_err)
+            Store.delete(device_addr)
             state.transport.close(socket)
         end
 
@@ -497,6 +473,27 @@ defmodule ARP.API.TCP.DeviceProtocol do
       true
     else
       false
+    end
+  end
+
+  defp check_promise(promise, addr, device_addr) do
+    promise = promise |> Poison.decode!(as: %Promise{}) |> Promise.decode()
+
+    result =
+      check_recover_promise(
+        promise.cid,
+        addr,
+        device_addr,
+        promise.amount,
+        promise.sign
+      )
+
+    if result do
+      info = DevicePromise.get(device_addr)
+
+      if info == nil || info.cid == 0 || (promise.cid == info.cid && promise.amount > info.amount) do
+        DevicePromise.set(device_addr, promise)
+      end
     end
   end
 end

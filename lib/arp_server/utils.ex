@@ -31,7 +31,7 @@ defmodule ARP.Utils do
   Encode integer to hex string
   """
   def encode_integer(int) do
-    hex = :binary.encode_unsigned(int) |> Base.encode16(case: :lower)
+    hex = int |> :binary.encode_unsigned() |> Base.encode16(case: :lower)
     "0x" <> hex
   end
 

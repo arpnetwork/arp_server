@@ -41,10 +41,9 @@ defmodule ARP.Promise do
 
         encode = <<cid::size(256), from_binary::binary, to_binary::binary, amount::size(256)>>
 
-        case Crypto.eth_recover(encode, sign) do
-          {:ok, recover_addr} ->
-            recover_addr == from
-
+        with {:ok, recover_addr} <- Crypto.eth_recover(encode, sign) do
+          recover_addr == from
+        else
           _ ->
             false
         end

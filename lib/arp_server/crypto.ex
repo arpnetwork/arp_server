@@ -36,7 +36,7 @@ defmodule ARP.Crypto do
   """
   def eth_privkey_to_pubkey(private_key) do
     {:ok, public_key} =
-      Base.decode16!(private_key, case: :mixed) |> :libsecp256k1.ec_pubkey_create(:uncompressed)
+      private_key |> Base.decode16!(case: :mixed) |> :libsecp256k1.ec_pubkey_create(:uncompressed)
 
     Base.encode16(public_key, case: :lower)
   end
@@ -124,16 +124,18 @@ defmodule ARP.Crypto do
         case keystore[:version] do
           1 ->
             {:ok,
-             aes_cbc_decrypt(
-               String.slice(derived_key, 0, 16) |> keccak256() |> String.slice(0, 16),
-               cipher_text,
-               iv
-             )
+             derived_key
+             |> String.slice(0, 16)
+             |> keccak256()
+             |> String.slice(0, 16)
+             |> aes_cbc_decrypt(cipher_text, iv)
              |> Base.encode16(case: :lower)}
 
           3 ->
             {:ok,
-             aes_ctrxor(String.slice(derived_key, 0, 16), cipher_text, iv)
+             derived_key
+             |> String.slice(0, 16)
+             |> aes_ctrxor(cipher_text, iv)
              |> Base.encode16(case: :lower)}
 
           _ ->

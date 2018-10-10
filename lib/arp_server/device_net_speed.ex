@@ -61,7 +61,7 @@ defmodule ARP.DeviceNetSpeed do
       exit(:shutdown)
     end
 
-    max_testing = (bandwidth / 100) |> round() |> max(1)
+    max_testing = bandwidth |> div(100) |> max(1)
 
     Process.send_after(__MODULE__, :interval, @interval)
 
@@ -98,31 +98,15 @@ defmodule ARP.DeviceNetSpeed do
 
     if data do
       testing = state[:testing]
-
       device_ids = List.delete(data[:device_ids], device_id)
-
       state = Map.put(state, ip, %{data | device_ids: device_ids})
-
       update_device(device_ids, data[:upload_speed], data[:download_speed])
 
       new_state =
         cond do
           Map.has_key?(testing, ip) ->
             state = %{state | testing: Map.delete(testing, ip)}
-
-            state =
-              cond do
-                Enum.empty?(device_ids) && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
-                  Map.delete(state, ip)
-
-                length(device_ids) > 0 && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
-                  [hd | _] = device_ids
-                  queue = List.insert_at(state[:queue], length(state[:queue]), {ip, hd})
-                  %{state | queue: queue}
-
-                true ->
-                  state
-              end
+            state = calc_state(device_ids, data, state, ip)
 
             # offline device is testing, test next ip
             start_speed_test(state)
@@ -145,7 +129,7 @@ defmodule ARP.DeviceNetSpeed do
     new_data = %{state[ip] | upload_speed: up, download_speed: down}
 
     state = %{state | testing: Map.delete(state[:testing], ip)}
-    new_state = start_speed_test(state) |> Map.put(ip, new_data)
+    new_state = state |> start_speed_test() |> Map.put(ip, new_data)
 
     if length(new_data[:device_ids]) > 0 do
       device_ids = new_data[:device_ids]
@@ -204,6 +188,21 @@ defmodule ARP.DeviceNetSpeed do
       end
     else
       state
+    end
+  end
+
+  defp calc_state(device_ids, data, state, ip) do
+    cond do
+      Enum.empty?(device_ids) && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
+        Map.delete(state, ip)
+
+      length(device_ids) > 0 && data[:upload_speed] == 0 && data[:download_speed] == 0 ->
+        [hd | _] = device_ids
+        queue = List.insert_at(state[:queue], length(state[:queue]), {ip, hd})
+        %{state | queue: queue}
+
+      true ->
+        state
     end
   end
 end

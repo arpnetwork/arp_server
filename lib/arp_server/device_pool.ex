@@ -132,20 +132,16 @@ defmodule ARP.DevicePool do
   def handle_call({:online, device}, _from, %{refs: refs} = state) do
     addr = device.address
 
-    case get(addr) do
-      nil ->
-        case create(device) do
-          {:ok, ref} ->
-            if Device.is_pending?(device) do
-              DeviceNetSpeed.online(device.ip, device.address)
-            end
+    with nil <- get(addr), {:ok, ref} <- create(device) do
+      if Device.is_pending?(device) do
+        DeviceNetSpeed.online(device.ip, device.address)
+      end
 
-            refs = Map.put(refs, ref, addr)
-            {:reply, :ok, Map.put(state, :refs, refs)}
-
-          {:error, err} ->
-            {:reply, {:error, err}, state}
-        end
+      refs = Map.put(refs, ref, addr)
+      {:reply, :ok, Map.put(state, :refs, refs)}
+    else
+      {:error, err} ->
+        {:reply, {:error, err}, state}
 
       _ ->
         {:reply, {:error, :invalid_param}, state}
@@ -265,7 +261,7 @@ defmodule ARP.DevicePool do
     private_key = Account.private_key()
     address = Account.address()
 
-    nonce = Nonce.get_and_update_nonce(address, dapp_address) |> Utils.encode_integer()
+    nonce = address |> Nonce.get_and_update_nonce(dapp_address) |> Utils.encode_integer()
     url = "http://#{ip}:#{port}"
 
     sign = Protocol.sign(method, data, nonce, dapp_address, private_key)

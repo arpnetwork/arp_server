@@ -493,7 +493,7 @@ defmodule ARP.Contract do
   @spec send_transaction(String.t(), String.t(), String.t(), integer(), integer()) ::
           {:ok, map()} | {:error, any()}
   def send_transaction(contract, encoded_abi, private_key, gas_price, gas_limit) do
-    from = Crypto.eth_privkey_to_pubkey(private_key) |> Crypto.get_eth_addr()
+    from = private_key |> Crypto.eth_privkey_to_pubkey() |> Crypto.get_eth_addr()
     private_key = Base.decode16!(private_key, case: :mixed)
     contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 

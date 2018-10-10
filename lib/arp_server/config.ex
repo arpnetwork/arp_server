@@ -25,10 +25,10 @@ defmodule ARP.Config do
 
     config =
       Enum.reduce(default_config, [], fn {key, value}, acc ->
-        unless is_nil(value) do
-          [{key, value} | acc]
-        else
+        if is_nil(value) do
           acc
+        else
+          [{key, value} | acc]
         end
       end)
 
