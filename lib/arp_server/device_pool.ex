@@ -211,8 +211,8 @@ defmodule ARP.DevicePool do
     match = [{{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :state, :"$3"}, 1}], [:"$3"]}]
 
     with devices <- :ets.select(__MODULE__, match),
-         dev when not is_nil(dev) <-
-           Enum.find(devices, nil, fn device -> match(device, filters) end) do
+         list when list != [] <- Enum.filter(devices, fn device -> match(device, filters) end),
+         dev when not is_nil(dev) <- Enum.random(list) do
       {:ok, dev}
     else
       _ ->
