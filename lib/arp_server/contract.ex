@@ -76,7 +76,7 @@ defmodule ARP.Contract do
   end
 
   @doc """
-  Approve to registry contract.
+  Approve to bank contract.
   """
   def approve(
         private_key,
@@ -86,6 +86,21 @@ defmodule ARP.Contract do
       ) do
     address = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("approve(address,uint256)", [address, value])
+
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
+  end
+
+  @doc """
+  Increase approve to bank contract.
+  """
+  def increase_approve(
+        private_key,
+        value,
+        gas_price \\ @default_gas_price,
+        gas_limit \\ @default_gas_limit
+      ) do
+    address = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    encoded_abi = ABI.encode("increaseApproval(address,uint256)", [address, value])
 
     send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
   end

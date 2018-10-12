@@ -29,6 +29,8 @@ defmodule ARP.CheckTask do
       check_server_unregister(private_key, server_addr, device_list)
     end
 
+    check_bank_arp(private_key, server_addr)
+
     run()
   end
 
@@ -74,6 +76,23 @@ defmodule ARP.CheckTask do
           end)
         end
       end
+    end
+  end
+
+  defp check_bank_arp(private_key, server_addr) do
+    min = 10_000
+
+    with {:ok, bank_balance} when bank_balance < min <- Contract.bank_balance(server_addr),
+         {:ok, arp_balance} when arp_balance > min <- Contract.get_arp_balance(server_addr) do
+      Task.start(fn ->
+        with {:ok, %{"status" => "0x1"}} <- Contract.increase_approve(private_key, min),
+             {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, min) do
+          Logger.info("Add bank arp success.")
+        else
+          e ->
+            Logger.error(inspect(e))
+        end
+      end)
     end
   end
 end
