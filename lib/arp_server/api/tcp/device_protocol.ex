@@ -3,8 +3,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
   tcp device protocol
   """
 
-  alias ARP.API.TCP.Store
-
   alias ARP.{
     Account,
     Config,
@@ -66,29 +64,26 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc """
   Send user request msg to device
   """
-  def user_request(addr, dapp_address, ip, port, price) do
-    pid = Store.get(addr)
+  def user_request(pid, dapp_address, ip, port, price) do
     Process.send(pid, {:user_request, dapp_address, ip, port, price}, [])
   end
 
   @doc """
   Send download speed test msg to device
   """
-  def speed_test(addr) do
-    pid = Store.get(addr)
+  def speed_test(pid) do
     Process.send(pid, :speed_test, [])
   end
 
   @doc """
   Send alloc end notify to device
   """
-  def alloc_end(addr, dapp_address) do
-    pid = Store.get(addr)
+  def alloc_end(pid, dapp_address) do
     Process.send(pid, {:alloc_end, dapp_address}, [])
   end
 
   def repeat_connect_offline(pid, addr) do
-    Process.send(pid, {:repeat_connect_offline, addr}, [])
+    GenServer.call(pid, {:repeat_connect_offline, addr}, @speed_timeout)
   end
 
   @doc false
@@ -107,9 +102,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc false
   def terminate(_reason, %{socket: _socket}) do
     # Delete device info
-    addr = device_addr()
-    Store.delete(addr)
-    DevicePool.offline(addr)
+    with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
+      DeviceNetSpeed.offline(dev.ip, dev.address)
+      DevicePool.offline(dev.address)
+    end
   end
 
   @doc """
@@ -119,7 +115,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
     if byte_size(data) > 0 do
       <<@protocol_type_data, data::binary>> = data
       %{id: id} = req = Poison.decode!(data, keys: :atoms!)
-
       state = handle_command(id, Map.get(req, :data), socket, state)
 
       {:noreply, state, @timeout}
@@ -214,6 +209,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
     end
 
     {:noreply, state}
+  rescue
+    _err ->
+      {:stop, :normal, state}
   end
 
   def handle_info({:user_request, dapp_address, ip, port, price}, %{socket: socket} = state) do
@@ -243,10 +241,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:noreply, state}
   end
 
-  def handle_info(
-        {:repeat_connect_offline, addr},
-        %{socket: socket, transport: transport} = state
-      ) do
+  def handle_call({:repeat_connect_offline, addr}, _from, %{socket: socket} = state) do
     %{
       id: @cmd_repeat_connect_offline_notify,
       data: %{
@@ -255,9 +250,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     }
     |> send_resp(socket)
 
-    transport.close(socket)
-
-    {:noreply, state}
+    {:stop, :normal, :ok, state}
   end
 
   # Device verify
@@ -315,14 +308,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
     ip = get_ip(socket)
     host = data[:proxy] || ip
 
-    # if device has already connect, first disconnect it.
-    if Store.has_key?(device_addr) do
-      pid = Store.get(device_addr)
-      repeat_connect_offline(pid, device_addr)
-      Store.delete(device_addr)
-      DevicePool.offline(device_addr)
-    end
-
     cond do
       DevicePool.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
@@ -340,24 +325,28 @@ defmodule ARP.API.TCP.DeviceProtocol do
         online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
 
-      !Store.has_key?(device_addr) ->
-        Store.put(device_addr, self())
+      true ->
         addr = Account.address()
 
         with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
              device = struct(ARP.Device, data),
-             device = struct(device, %{ip: host, original_ip: ip, address: device_addr, cid: id}),
-             :ok <- DevicePool.online(device) do
+             device =
+               struct(device, %{
+                 address: device_addr,
+                 tcp_pid: self(),
+                 ip: host,
+                 original_ip: ip,
+                 cid: id
+               }),
+             :ok <- online(device) do
+          DeviceNetSpeed.online(ip, device_addr, self())
+
           online_resp(socket, @cmd_result_success)
         else
           _ ->
             online_resp(socket, @cmd_result_verify_err)
-            Store.delete(device_addr)
             state.transport.close(socket)
         end
-
-      true ->
-        state.transport.close(socket)
     end
 
     state
@@ -369,9 +358,37 @@ defmodule ARP.API.TCP.DeviceProtocol do
     state
   end
 
+  defp online(:ok) do
+    :ok
+  end
+
+  defp online(:error) do
+    :error
+  end
+
+  defp online(device) do
+    res =
+      with :ok <- DevicePool.online(device) do
+        :ok
+      else
+        {:error, :duplicate_address} ->
+          with {_, old_dev} <- DevicePool.get(device.address) do
+            repeat_connect_offline(old_dev.tcp_pid, device.address)
+          end
+
+          device
+
+        _ ->
+          :error
+      end
+
+    online(res)
+  end
+
   defp idle do
-    addr = device_addr()
-    DevicePool.idle(addr)
+    with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
+      DevicePool.idle(dev.address)
+    end
   end
 
   # Send online respone to device
@@ -421,11 +438,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp send_resp(resp, socket) do
     resp = <<@protocol_type_data>> <> Poison.encode!(resp)
     :ranch_tcp.send(socket, resp)
-  end
-
-  # Return device address
-  defp device_addr do
-    Store.get(self())
   end
 
   # Get device ip

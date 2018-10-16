@@ -19,8 +19,8 @@ defmodule ARP.DeviceNetSpeed do
   @doc """
   Add a new device and the net speed is spread equally across all devices in the same ip.
   """
-  def online(ip, device_id) do
-    GenServer.cast(__MODULE__, {:online, ip, device_id})
+  def online(ip, device_id, tcp_pid) do
+    GenServer.cast(__MODULE__, {:online, ip, device_id, tcp_pid})
   end
 
   @doc """
@@ -68,7 +68,7 @@ defmodule ARP.DeviceNetSpeed do
     {:ok, %{timeout: %{}, testing: %{}, max_testing: max_testing, queue: []}}
   end
 
-  def handle_cast({:online, ip, device_id}, %{timeout: timeout, queue: queue} = state) do
+  def handle_cast({:online, ip, device_id, tcp_pid}, %{timeout: timeout, queue: queue} = state) do
     new_state =
       if Map.has_key?(state, ip) do
         data = state[ip]
@@ -85,7 +85,7 @@ defmodule ARP.DeviceNetSpeed do
           device_ids: [device_id]
         }
 
-        %{state | queue: List.insert_at(queue, length(queue), {ip, device_id})}
+        %{state | queue: List.insert_at(queue, length(queue), {ip, device_id, tcp_pid})}
         |> start_speed_test()
         |> Map.put(ip, data)
       end
@@ -177,10 +177,10 @@ defmodule ARP.DeviceNetSpeed do
 
       if next do
         # notify tcp to start speed testing
-        {ip, device_id} = next
+        {ip, device_id, tcp_pid} = next
 
         # notify ARP.API.TCP.DeviceProtocol to start test speed
-        DeviceProtocol.speed_test(device_id)
+        DeviceProtocol.speed_test(tcp_pid)
 
         %{state | testing: Map.put(state[:testing], ip, device_id), queue: new_queue}
       else

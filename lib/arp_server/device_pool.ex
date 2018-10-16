@@ -1,10 +1,8 @@
 defmodule ARP.DevicePool do
   @moduledoc false
 
-  alias ARP.{Account, DappPool, Device, DeviceNetSpeed, Nonce, Utils}
-  alias ARP.API.JSONRPC2.Protocol
+  alias ARP.{DappPool, Device}
   alias ARP.API.TCP.DeviceProtocol
-  alias JSONRPC2.Client.HTTP
 
   use GenServer
 
@@ -15,6 +13,19 @@ defmodule ARP.DevicePool do
   def get(address) do
     case :ets.lookup(__MODULE__, address) do
       [{^address, pid, dev}] -> {pid, dev}
+      [] -> nil
+    end
+  end
+
+  def get_by_tcp_pid(tcp_pid) do
+    # :ets.fun2ms(fn {addr, pid, dev} when :erlang.map_get(:tcp_pid, dev) == tcp_pid  -> addr end)
+    ms = [
+      {{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :tcp_pid, :"$3"}, {:const, tcp_pid}}],
+       [{{:"$2", :"$3"}}]}
+    ]
+
+    case :ets.select(__MODULE__, ms) do
+      [{pid, dev}] -> {pid, dev}
       [] -> nil
     end
   end
@@ -37,21 +48,19 @@ defmodule ARP.DevicePool do
     end
   end
 
-  def delete(address) do
-    :ets.delete(__MODULE__, address)
-  end
-
   def online(device) do
     GenServer.call(__MODULE__, {:online, device})
   end
 
   def offline(address) do
     case get(address) do
-      {pid, dev} ->
-        Device.offline(pid, dev)
+      {_pid, dev} ->
+        GenServer.call(__MODULE__, {:offline, address})
 
-        if Device.is_allocating?(dev) && !is_nil(dev.dapp_address) do
-          device_offline(address, dev.dapp_address)
+        if Device.is_allocating?(dev) do
+          Task.start(fn ->
+            DappPool.notify_device_offline(dev.dapp_address, address)
+          end)
         end
 
         :ok
@@ -66,8 +75,10 @@ defmodule ARP.DevicePool do
       {pid, dev} ->
         Device.idle(pid)
 
-        if Device.is_allocating?(dev) && !is_nil(dev.dapp_address) do
-          device_offline(address, dev.dapp_address)
+        if Device.is_allocating?(dev) do
+          Task.start(fn ->
+            DappPool.notify_device_offline(dev.dapp_address, address)
+          end)
         end
 
         :ok
@@ -132,17 +143,28 @@ defmodule ARP.DevicePool do
   def handle_call({:online, device}, _from, %{refs: refs} = state) do
     addr = device.address
 
-    with nil <- get(addr), {:ok, ref} <- create(device) do
-      if Device.is_pending?(device) do
-        DeviceNetSpeed.online(device.original_ip, device.address)
-      end
-
+    with false <- :ets.member(__MODULE__, addr),
+         {:ok, ref} <- create(device) do
       refs = Map.put(refs, ref, addr)
       {:reply, :ok, Map.put(state, :refs, refs)}
     else
+      true ->
+        {:reply, {:error, :duplicate_address}, state}
+
       {:error, err} ->
         {:reply, {:error, err}, state}
 
+      _ ->
+        {:reply, {:error, :invalid_param}, state}
+    end
+  end
+
+  def handle_call({:offline, address}, _from, state) do
+    with {pid, _dev} <- get(address) do
+      :ets.delete(__MODULE__, address)
+      GenServer.stop(pid)
+      {:reply, :ok, state}
+    else
       _ ->
         {:reply, {:error, :invalid_param}, state}
     end
@@ -154,7 +176,7 @@ defmodule ARP.DevicePool do
          :ok <- Device.allocating(pid, dapp_address),
          :ok <- DappPool.update(dapp_address, ip, port),
          # prepare device
-         :ok <- DeviceProtocol.user_request(dev.address, dapp_address, ip, port, price) do
+         :ok <- DeviceProtocol.user_request(dev.tcp_pid, dapp_address, ip, port, price) do
       dev_info = %{
         address: dev.address,
         ip: dev.ip,
@@ -180,19 +202,17 @@ defmodule ARP.DevicePool do
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{refs: refs} = state) do
     {address, refs} = Map.pop(refs, ref)
 
-    if address && :normal != reason do
-      # restart
-      with {_pid, dev} <- get(address),
+    refs =
+      with _ when reason != :normal <- reason,
+           {_pid, dev} <- get(address),
            {:ok, ref} <- create(dev) do
-        refs = Map.put(refs, ref, address)
-        {:noreply, Map.put(state, :refs, refs)}
+        Map.put(refs, ref, address)
       else
         _ ->
-          {:noreply, Map.put(state, :refs, refs)}
+          refs
       end
-    else
-      {:noreply, Map.put(state, :refs, refs)}
-    end
+
+    {:noreply, Map.put(state, :refs, refs)}
   end
 
   defp create(dev) do
@@ -241,42 +261,5 @@ defmodule ARP.DevicePool do
       end)
 
     Enum.empty?(res)
-  end
-
-  defp device_offline(device_address, dapp_address) do
-    method = "device_offline"
-    sign_data = [device_address]
-
-    {_, ip, port} = DappPool.get_item(dapp_address)
-
-    case send_request(dapp_address, ip, port, method, sign_data) do
-      {:ok, _result} ->
-        :ok
-
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
-  defp send_request(dapp_address, ip, port, method, data) do
-    private_key = Account.private_key()
-    address = Account.address()
-
-    nonce = address |> Nonce.get_and_update_nonce(dapp_address) |> Utils.encode_integer()
-    url = "http://#{ip}:#{port}"
-
-    sign = Protocol.sign(method, data, nonce, dapp_address, private_key)
-
-    case HTTP.call(url, method, data ++ [nonce, sign]) do
-      {:ok, result} ->
-        if Protocol.verify_resp_sign(result, address, dapp_address) do
-          {:ok, result}
-        else
-          {:error, :verify_error}
-        end
-
-      {:error, err} ->
-        {:error, err}
-    end
   end
 end

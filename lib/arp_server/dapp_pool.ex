@@ -1,7 +1,9 @@
 defmodule ARP.DappPool do
   @moduledoc false
 
-  alias ARP.{Account, Contract, Dapp}
+  alias ARP.{Account, Contract, Dapp, Nonce, Utils}
+  alias ARP.API.JSONRPC2.Protocol
+  alias JSONRPC2.Client.HTTP
 
   require Logger
 
@@ -15,16 +17,6 @@ defmodule ARP.DappPool do
 
   def get(dapp_addr) do
     case :ets.lookup(__MODULE__, dapp_addr) do
-      [{_, pid, _ip, _port}] ->
-        pid
-
-      [] ->
-        nil
-    end
-  end
-
-  def get_item(dapp_addr) do
-    case :ets.lookup(__MODULE__, dapp_addr) do
       [{_, pid, ip, port}] ->
         {pid, ip, port}
 
@@ -35,6 +27,15 @@ defmodule ARP.DappPool do
 
   def get_all do
     :ets.tab2list(__MODULE__)
+  end
+
+  def notify_device_offline(dapp_addr, device_addr) do
+    with {_, ip, port} <- get(dapp_addr) do
+      method = "device_offline"
+      sign_data = [device_addr]
+
+      send_request(dapp_addr, ip, port, method, sign_data)
+    end
   end
 
   def load_bound_dapp do
@@ -54,7 +55,7 @@ defmodule ARP.DappPool do
             false
         end
 
-      pid ->
+      {pid, _, _} ->
         Dapp.normal?(pid)
     end
   end
@@ -100,13 +101,13 @@ defmodule ARP.DappPool do
             {:reply, err, state}
         end
 
-      pid ->
+      {pid, _, _} ->
         {:reply, {:ok, pid}, state}
     end
   end
 
   def handle_call({:update, dapp_addr, ip, port}, _from, state) do
-    case get_item(dapp_addr) do
+    case get(dapp_addr) do
       {pid, old_ip, _} ->
         if is_nil(old_ip) || old_ip != ip do
           :ets.insert(__MODULE__, {dapp_addr, pid, ip, port})
@@ -164,6 +165,28 @@ defmodule ARP.DappPool do
 
       err ->
         err
+    end
+  end
+
+  defp send_request(dapp_address, ip, port, method, data) do
+    private_key = Account.private_key()
+    address = Account.address()
+
+    nonce = address |> Nonce.get_and_update_nonce(dapp_address) |> Utils.encode_integer()
+    url = "http://#{ip}:#{port}"
+
+    sign = Protocol.sign(method, data, nonce, dapp_address, private_key)
+
+    case HTTP.call(url, method, data ++ [nonce, sign]) do
+      {:ok, result} ->
+        if Protocol.verify_resp_sign(result, address, dapp_address) do
+          {:ok, result}
+        else
+          {:error, :verify_error}
+        end
+
+      {:error, err} ->
+        {:error, err}
     end
   end
 end

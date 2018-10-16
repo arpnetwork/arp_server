@@ -3,7 +3,7 @@ defmodule ARP.Device do
   Record online device.
   """
 
-  alias ARP.{Account, Config, Contract, DeviceNetSpeed, DevicePool, DevicePromise}
+  alias ARP.{Account, Config, Contract, DevicePool, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
   alias JSONRPC2.Client.HTTP
 
@@ -18,6 +18,7 @@ defmodule ARP.Device do
 
   defstruct [
     :address,
+    :tcp_pid,
     :price,
     :ip,
     :port,
@@ -67,14 +68,6 @@ defmodule ARP.Device do
     end
   end
 
-  def offline(pid, dev) do
-    if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:offline, dev})
-    else
-      {:error, :invalid_pid}
-    end
-  end
-
   def release(pid, address, dapp_address) do
     if Process.alive?(pid) do
       GenServer.cast(pid, {:release, address, dapp_address})
@@ -115,16 +108,6 @@ defmodule ARP.Device do
     Process.send_after(self(), :check_interval, 30_000)
 
     {:ok, %{address: dev.address, increasing: false}}
-  end
-
-  def handle_call({:offline, dev}, _from, %{address: address} = state) do
-    DevicePool.delete(address)
-
-    if dev do
-      DeviceNetSpeed.offline(dev.original_ip, address)
-    end
-
-    {:stop, :normal, :ok, state}
   end
 
   def handle_call(:idle, _from, %{address: address} = state) do
@@ -170,7 +153,7 @@ defmodule ARP.Device do
   def handle_cast({:release, address, dapp_address}, state) do
     with {_pid, dev} <- DevicePool.get(address),
          ^dapp_address <- dev.dapp_address,
-         :ok = DeviceProtocol.alloc_end(address, dapp_address) do
+         :ok = DeviceProtocol.alloc_end(dev.tcp_pid, dapp_address) do
       dev = set_idle(dev)
       DevicePool.update(address, dev)
 
