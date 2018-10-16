@@ -305,9 +305,15 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   # Online request
   defp handle_command(@cmd_online, data, socket, state) do
+    # compatible
+    tcp_port = data[:tcp_port] || data[:port]
+    http_port = data[:http_port] || tcp_port + 1
+    data = data |> Map.put(:tcp_port, tcp_port) |> Map.put(:http_port, http_port)
+
     ver = data[:ver]
     device_addr = Map.get(state, :device_addr)
-    {:ok, {ip, _}} = :ranch_tcp.peername(socket)
+    ip = get_ip(socket)
+    host = data[:proxy] || ip
 
     # if device has already connect, first disconnect it.
     if Store.has_key?(device_addr) do
@@ -330,7 +336,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         online_resp(socket, @cmd_result_ver_err)
         state.transport.close(socket)
 
-      :error == Device.check_port(ip, data[:port], data[:port] + 1) ->
+      :error == Device.check_port(host |> to_charlist(), data[:tcp_port], data[:http_port]) ->
         online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
 
@@ -340,7 +346,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
         with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
              device = struct(ARP.Device, data),
-             device = struct(device, %{ip: get_ip(socket), address: device_addr, cid: id}),
+             device = struct(device, %{ip: host, original_ip: ip, address: device_addr, cid: id}),
              :ok <- DevicePool.online(device) do
           online_resp(socket, @cmd_result_success)
         else

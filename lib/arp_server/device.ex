@@ -21,6 +21,9 @@ defmodule ARP.Device do
     :price,
     :ip,
     :port,
+    :original_ip,
+    :tcp_port,
+    :http_port,
     :dapp_address,
     :brand,
     :model,
@@ -47,14 +50,12 @@ defmodule ARP.Device do
     GenServer.start_link(__MODULE__, opts)
   end
 
-  def check_port(ip, tcp_port, http_port) do
-    ip_str = ip |> Tuple.to_list() |> Enum.join(".")
-
-    with {:ok, socket} <- :gen_tcp.connect(ip, tcp_port, [active: false], 5000),
+  def check_port(host, tcp_port, http_port) do
+    with {:ok, socket} <- :gen_tcp.connect(host, tcp_port, [active: false], 5000),
          {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
          :gen_tcp.close(socket),
-         HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []),
-         {:ok, _} <- HTTP.call("http://#{ip_str}:#{http_port}", "device_ping", []) do
+         HTTP.call("http://#{host}:#{http_port}", "device_ping", []),
+         {:ok, _} <- HTTP.call("http://#{host}:#{http_port}", "device_ping", []) do
       :ok
     else
       {{_, _}, socket} ->
@@ -120,7 +121,7 @@ defmodule ARP.Device do
     DevicePool.delete(address)
 
     if dev do
-      DeviceNetSpeed.offline(dev.ip, address)
+      DeviceNetSpeed.offline(dev.original_ip, address)
     end
 
     {:stop, :normal, :ok, state}

@@ -46,9 +46,9 @@ defmodule ARP.DevicePromise do
     method = "account_pay"
     sign_data = [promise_data]
 
-    {_pid, %{ip: ip, port: port}} = DevicePool.get(device_address)
+    {_pid, %{ip: ip, http_port: port}} = DevicePool.get(device_address)
 
-    case send_request(device_address, ip, port + 1, method, sign_data) do
+    case send_request(device_address, ip, port, method, sign_data) do
       {:ok, _result} ->
         :ok
 

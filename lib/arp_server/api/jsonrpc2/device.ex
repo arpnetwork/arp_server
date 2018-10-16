@@ -4,7 +4,7 @@ defmodule ARP.API.JSONRPC2.Device do
   use JSONRPC2.Server.Handler
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Account, DevicePool, Utils}
+  alias ARP.{Account, Device, DevicePool, Utils}
 
   def request(price, ip, port, nonce, sign) do
     decoded_price = Utils.decode_hex(price)
@@ -31,6 +31,19 @@ defmodule ARP.API.JSONRPC2.Device do
     else
       err ->
         Protocol.response(err)
+    end
+  end
+
+  def check_port(tcp_port, http_port) do
+    ip = Process.get(:remote_ip, {0, 0, 0, 0})
+    ip = ip |> Tuple.to_list() |> Enum.join(".") |> to_charlist()
+
+    case Device.check_port(ip, tcp_port, http_port) do
+      :ok ->
+        Protocol.response(%{})
+
+      :error ->
+        Protocol.response(:error)
     end
   end
 end

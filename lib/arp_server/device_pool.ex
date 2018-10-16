@@ -134,7 +134,7 @@ defmodule ARP.DevicePool do
 
     with nil <- get(addr), {:ok, ref} <- create(device) do
       if Device.is_pending?(device) do
-        DeviceNetSpeed.online(device.ip, device.address)
+        DeviceNetSpeed.online(device.original_ip, device.address)
       end
 
       refs = Map.put(refs, ref, addr)
@@ -158,7 +158,8 @@ defmodule ARP.DevicePool do
       dev_info = %{
         address: dev.address,
         ip: dev.ip,
-        port: dev.port,
+        tcp_port: dev.tcp_port,
+        http_port: dev.http_port,
         width: dev.width,
         height: dev.height
       }
