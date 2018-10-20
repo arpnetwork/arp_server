@@ -1,8 +1,8 @@
 defmodule ARP.DevicePool do
   @moduledoc false
 
-  alias ARP.{DappPool, Device}
   alias ARP.API.TCP.DeviceProtocol
+  alias ARP.{DappPool, Device}
 
   use GenServer
 

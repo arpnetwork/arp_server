@@ -75,6 +75,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
     Process.send(pid, :speed_test, [])
   end
 
+  def speed_test_notify(pid, ul_speed, dl_speed) do
+    Process.send(pid, {:speed_test_notify, ul_speed, dl_speed}, [])
+  end
+
   @doc """
   Send alloc end notify to device
   """
@@ -214,6 +218,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
       {:stop, :normal, state}
   end
 
+  def handle_info({:speed_test_notify, ul_speed, dl_speed}, %{socket: socket} = state) do
+    speed_notify(socket, ul_speed, dl_speed)
+
+    {:noreply, state}
+  end
+
   def handle_info({:user_request, dapp_address, ip, port, price}, %{socket: socket} = state) do
     %{
       id: @cmd_alloc_request,
@@ -319,6 +329,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       !Enum.member?(@compatible_ver, ver) ->
         online_resp(socket, @cmd_result_ver_err)
+        state.transport.close(socket)
+
+      Enum.all?([data[:tcp_port], data[:http_port]], fn x -> x >= 0 && x <= 65_535 end) == false ->
+        online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
 
       :error == Device.check_port(host |> to_charlist(), data[:tcp_port], data[:http_port]) ->
