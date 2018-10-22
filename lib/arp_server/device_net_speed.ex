@@ -11,6 +11,7 @@ defmodule ARP.DeviceNetSpeed do
 
   @interval 60_000
   @speed_timeout 86_400
+  @min_upload_speed 2_097_152
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -74,12 +75,18 @@ defmodule ARP.DeviceNetSpeed do
         data = state[ip]
         device_ids = [device_id | data[:device_ids]]
 
-        update_device(device_ids, data[:upload_speed], data[:download_speed])
+        if data[:upload_speed] >= @min_upload_speed do
+          update_device(device_ids, data[:upload_speed], data[:download_speed])
 
-        DeviceProtocol.speed_test_notify(tcp_pid, data[:upload_speed], data[:download_speed])
+          DeviceProtocol.speed_test_notify(tcp_pid, data[:upload_speed], data[:download_speed])
 
-        %{state | timeout: Map.delete(timeout, ip)}
-        |> Map.put(ip, %{data | device_ids: device_ids})
+          %{state | timeout: Map.delete(timeout, ip)}
+          |> Map.put(ip, %{data | device_ids: device_ids})
+        else
+          %{state | queue: List.insert_at(queue, length(queue), {ip, device_id, tcp_pid})}
+          |> start_speed_test()
+          |> Map.put(ip, %{data | device_ids: device_ids})
+        end
       else
         data = %{
           upload_speed: 0,
