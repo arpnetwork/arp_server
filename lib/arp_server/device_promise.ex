@@ -1,10 +1,6 @@
 defmodule ARP.DevicePromise do
   @moduledoc false
 
-  alias ARP.API.JSONRPC2.Protocol
-  alias JSONRPC2.Client.HTTP
-  alias ARP.{Account, DevicePool, Nonce, Promise, Utils}
-
   use GenServer
 
   @file_path Application.get_env(:arp_server, :data_dir)
@@ -39,24 +35,6 @@ defmodule ARP.DevicePromise do
     GenServer.cast(__MODULE__, :write)
   end
 
-  def pay(device_address, promise) do
-    set(device_address, promise)
-    promise_data = promise |> Promise.encode() |> Poison.encode!()
-
-    method = "account_pay"
-    sign_data = [promise_data]
-
-    {_pid, %{ip: ip, http_port: port}} = DevicePool.get(device_address)
-
-    case send_request(device_address, ip, port, method, sign_data) do
-      {:ok, _result} ->
-        :ok
-
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
   # Callbacks
 
   def init(_opts) do
@@ -80,27 +58,5 @@ defmodule ARP.DevicePromise do
   def handle_cast(:write, %{tab: tab} = state) do
     :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
     {:noreply, state}
-  end
-
-  defp send_request(device_address, ip, port, method, data) do
-    private_key = Account.private_key()
-    address = Account.address()
-
-    nonce = address |> Nonce.get_and_update_nonce(device_address) |> Utils.encode_integer()
-    url = "http://#{ip}:#{port}"
-
-    sign = Protocol.sign(method, data, nonce, device_address, private_key)
-
-    case HTTP.call(url, method, data ++ [nonce, sign]) do
-      {:ok, result} ->
-        if Protocol.verify_resp_sign(result, address, device_address) do
-          {:ok, result}
-        else
-          {:error, :verify_error}
-        end
-
-      {:error, err} ->
-        {:error, err}
-    end
   end
 end

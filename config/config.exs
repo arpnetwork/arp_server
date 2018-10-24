@@ -8,11 +8,4 @@ config :arp_server,
   base_deposit: 100_000 * round(1.0e18),
   device_deposit: 100 * round(1.0e18),
   divide_rate: 0.05,
-
-  # user default config
-  port: 8000,
-  deposit: 200_000 * round(1.0e18),
-  max_load: 1000,
-  keystore_file: nil,
-  ip: nil,
-  bandwidth: nil
+  admin_port: 9000

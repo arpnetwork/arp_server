@@ -3,9 +3,9 @@ defmodule ARP.Promise do
 
   alias ARP.{Crypto, Utils}
 
-  defstruct [:cid, :from, :to, :amount, :sign]
+  defstruct [:cid, :from, :to, :amount, :sign, :paid]
 
-  def create(private_key, cid, from, to, amount) do
+  def create(private_key, cid, from, to, amount, paid \\ 0) do
     decoded_from = from |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     decoded_to = to |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
@@ -20,7 +20,8 @@ defmodule ARP.Promise do
       from: from,
       to: to,
       amount: amount,
-      sign: sign
+      sign: sign,
+      paid: paid
     }
   end
 
@@ -59,7 +60,8 @@ defmodule ARP.Promise do
       from: promise.from,
       to: promise.to,
       amount: promise.amount |> Utils.encode_integer(),
-      sign: promise.sign
+      sign: promise.sign,
+      paid: (promise.paid || 0) |> Utils.encode_integer()
     }
   end
 
@@ -69,7 +71,8 @@ defmodule ARP.Promise do
       from: promise.from,
       to: promise.to,
       amount: promise.amount |> Utils.decode_hex(),
-      sign: promise.sign
+      sign: promise.sign,
+      paid: (promise.paid || "0x0") |> Utils.decode_hex()
     }
   end
 end

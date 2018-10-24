@@ -43,7 +43,6 @@ defmodule ARP.DeviceNetSpeed do
   %{
     timeout: %{"ip" => 1531881682, ...},
     testing: %{"ip" => "device_id", ...},
-    max_testing: 10,
     queue: [{"ip", "device_id"}, ...],
     "ip": %{
       upload_speed: 0,
@@ -55,18 +54,9 @@ defmodule ARP.DeviceNetSpeed do
   Start an interval timer to check whether the net_speed of ip is expired.
   """
   def init(_opts) do
-    bandwidth = Config.get(:bandwidth)
-
-    if is_nil(bandwidth) || !is_integer(bandwidth) do
-      Logger.error("bandwidth in config is null or not integer!")
-      exit(:shutdown)
-    end
-
-    max_testing = bandwidth |> div(100) |> max(1)
-
     Process.send_after(__MODULE__, :interval, @interval)
 
-    {:ok, %{timeout: %{}, testing: %{}, max_testing: max_testing, queue: []}}
+    {:ok, %{timeout: %{}, testing: %{}, queue: []}}
   end
 
   def handle_cast({:online, ip, device_id, tcp_pid}, %{timeout: timeout, queue: queue} = state) do
@@ -168,6 +158,11 @@ defmodule ARP.DeviceNetSpeed do
     {:noreply, new_state}
   end
 
+  defp max_testing_device do
+    bandwidth = Config.get(:bandwidth)
+    bandwidth |> div(100) |> max(1)
+  end
+
   # Notify Device to update device net speed.
   defp update_device(device_ids, up, down) do
     l = length(device_ids)
@@ -181,7 +176,7 @@ defmodule ARP.DeviceNetSpeed do
 
   # Notify device tcp socket to start test net speed.
   defp start_speed_test(state) do
-    if map_size(state[:testing]) < state[:max_testing] do
+    if map_size(state[:testing]) < max_testing_device() do
       {next, new_queue} = List.pop_at(state[:queue], 0)
 
       if next do

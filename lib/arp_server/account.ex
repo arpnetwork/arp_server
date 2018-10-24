@@ -3,7 +3,22 @@ defmodule ARP.Account do
   Manage server account
   """
 
-  alias ARP.{Config, Contract, Crypto, Dapp, DappPool, DevicePool, DevicePromise, Promise}
+  alias JSONRPC2.Client.HTTP
+
+  alias ARP.API.JSONRPC2.Protocol
+
+  alias ARP.{
+    Config,
+    Contract,
+    Crypto,
+    Dapp,
+    DappPool,
+    DevicePool,
+    DevicePromise,
+    Nonce,
+    Promise,
+    Utils
+  }
 
   require Logger
 
@@ -26,8 +41,10 @@ defmodule ARP.Account do
       device_promise =
         calc_device_promise(incremental_amount, device_addr, self_addr, private_key)
 
+      DevicePromise.set(device_addr, device_promise)
+
       Task.start(fn ->
-        DevicePromise.pay(device_addr, device_promise)
+        send_to_device(device_addr, device_promise)
       end)
 
       :ok
@@ -48,19 +65,29 @@ defmodule ARP.Account do
     GenServer.call(__MODULE__, {:set_key, keystore, auth})
   end
 
+  def has_key do
+    :ets.member(__MODULE__, :address)
+  end
+
   def private_key do
-    [{:private_key, key}] = :ets.lookup(__MODULE__, :private_key)
-    key
+    case :ets.lookup(__MODULE__, :private_key) do
+      [{:private_key, key}] -> key
+      [] -> nil
+    end
   end
 
   def public_key do
-    [{:public_key, key}] = :ets.lookup(__MODULE__, :public_key)
-    key
+    case :ets.lookup(__MODULE__, :public_key) do
+      [{:public_key, key}] -> key
+      [] -> nil
+    end
   end
 
   def address do
-    [{:address, addr}] = :ets.lookup(__MODULE__, :address)
-    addr
+    case :ets.lookup(__MODULE__, :address) do
+      [{:address, addr}] -> addr
+      [] -> nil
+    end
   end
 
   # Callbacks
@@ -76,8 +103,6 @@ defmodule ARP.Account do
       address = Crypto.get_eth_addr(public_key)
       Logger.info("use address #{address}")
 
-      Config.set_keystore(keystore)
-
       data = [
         {:private_key, private_key},
         {:public_key, public_key},
@@ -86,10 +111,10 @@ defmodule ARP.Account do
 
       :ets.insert(__MODULE__, data)
 
-      {:reply, {:ok, Enum.into(data, %{})}, state}
+      {:reply, :ok, state}
     else
       _ ->
-        {:reply, {:error, "keystore file invalid or password error!"}, state}
+        {:reply, {:error, :invalid_keystore_or_password}, state}
     end
   end
 
@@ -120,5 +145,44 @@ defmodule ARP.Account do
     device_amount = last_device_amount + increment
 
     Promise.create(private_key, device_cid, server_addr, device_addr, device_amount)
+  end
+
+  defp send_to_device(device_address, promise) do
+    promise_data = promise |> Promise.encode() |> Poison.encode!()
+
+    method = "account_pay"
+    sign_data = [promise_data]
+
+    {_pid, %{ip: ip, http_port: port}} = DevicePool.get(device_address)
+
+    case send_request(device_address, ip, port, method, sign_data) do
+      {:ok, _result} ->
+        :ok
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp send_request(device_address, ip, port, method, data) do
+    private_key = private_key()
+    address = address()
+
+    nonce = address |> Nonce.get_and_update_nonce(device_address) |> Utils.encode_integer()
+    url = "http://#{ip}:#{port}"
+
+    sign = Protocol.sign(method, data, nonce, device_address, private_key)
+
+    case HTTP.call(url, method, data ++ [nonce, sign]) do
+      {:ok, result} ->
+        if Protocol.verify_resp_sign(result, address, device_address) do
+          {:ok, result}
+        else
+          {:error, :verify_error}
+        end
+
+      {:error, err} ->
+        {:error, err}
+    end
   end
 end

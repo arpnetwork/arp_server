@@ -30,6 +30,16 @@ defmodule ARP.DevicePool do
     end
   end
 
+  def get_by_dapp(dapp_address) do
+    # :ets.fun2ms(fn {addr, pid, dev} when :erlang.map_get(:dapp_address, dev) == dapp_address  -> {addr, pid, dev} end)
+    match = [
+      {{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :dapp_address, :"$3"}, {:const, dapp_address}}],
+       [{{:"$1", :"$2", :"$3"}}]}
+    ]
+
+    :ets.select(__MODULE__, match)
+  end
+
   def get_all do
     :ets.tab2list(__MODULE__)
   end
@@ -58,9 +68,7 @@ defmodule ARP.DevicePool do
         GenServer.call(__MODULE__, {:offline, address})
 
         if Device.is_allocating?(dev) do
-          Task.start(fn ->
-            DappPool.notify_device_offline(dev.dapp_address, address)
-          end)
+          DappPool.notify_device_offline(dev.dapp_address, address)
         end
 
         :ok
@@ -76,9 +84,7 @@ defmodule ARP.DevicePool do
         Device.idle(pid)
 
         if Device.is_allocating?(dev) do
-          Task.start(fn ->
-            DappPool.notify_device_offline(dev.dapp_address, address)
-          end)
+          DappPool.notify_device_offline(dev.dapp_address, address)
         end
 
         :ok
@@ -171,10 +177,10 @@ defmodule ARP.DevicePool do
   end
 
   def handle_call({:request, dapp_address, price, ip, port}, _from, state) do
-    with {:ok, dev} <- find_device(%{price: price}),
+    with :ok <- DappPool.update(dapp_address, ip, port),
+         {:ok, dev} <- find_device(%{price: price}),
          {pid, _dev} <- get(dev.address),
          :ok <- Device.allocating(pid, dapp_address),
-         :ok <- DappPool.update(dapp_address, ip, port),
          # prepare device
          :ok <- DeviceProtocol.user_request(dev.tcp_pid, dapp_address, ip, port, price) do
       dev_info = %{
@@ -203,7 +209,7 @@ defmodule ARP.DevicePool do
     {address, refs} = Map.pop(refs, ref)
 
     refs =
-      with _ when reason != :normal <- reason,
+      with true <- whether_restart(reason),
            {_pid, dev} <- get(address),
            {:ok, ref} <- create(dev) do
         Map.put(refs, ref, address)
@@ -213,6 +219,22 @@ defmodule ARP.DevicePool do
       end
 
     {:noreply, Map.put(state, :refs, refs)}
+  end
+
+  defp whether_restart(:normal) do
+    false
+  end
+
+  defp whether_restart(:shutdown) do
+    false
+  end
+
+  defp whether_restart({:shutdown, _}) do
+    false
+  end
+
+  defp whether_restart(_) do
+    true
   end
 
   defp create(dev) do

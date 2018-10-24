@@ -282,25 +282,33 @@ defmodule ARP.API.TCP.DeviceProtocol do
            Contract.get_device_bind_info(device_addr) do
       state = Map.put(state, :device_addr, device_addr)
 
+      # check promise
+      {:ok, %{id: cid, paid: paid}} = Contract.bank_allowance(addr, device_addr)
+      remote_promise = check_remote_promise(promise, cid, addr, device_addr)
+      local_promise = DevicePromise.get(device_addr)
+      local_promise = check_local_promise(local_promise, cid, addr, device_addr)
+
+      cond do
+        cid == 0 ->
+          # promise is invalid
+          DevicePromise.delete(device_addr)
+
+        remote_promise && (is_nil(local_promise) || local_promise.amount < remote_promise.amount) ->
+          # recover device promise when local promise is invalid
+          DevicePromise.set(device_addr, remote_promise)
+
+        is_nil(local_promise) && is_nil(remote_promise) ->
+          DevicePromise.set(
+            device_addr,
+            Promise.create(private_key, cid, addr, device_addr, paid)
+          )
+
+        true ->
+          nil
+      end
+
       send_sign = Crypto.eth_sign(salt, private_key)
       device_verify_resp(socket, @cmd_result_success, send_sign)
-
-      # check promise
-      if promise != nil do
-        check_promise(promise, addr, device_addr)
-      end
-
-      # recover device promise when it is lost
-      with {:ok, %{id: cid, paid: paid}} when cid != 0 <-
-             Contract.bank_allowance(addr, device_addr) do
-        if paid > 0 do
-          info = DevicePromise.get(device_addr)
-
-          if info == nil || info.cid == 0 || cid != info.cid || paid > info.amount do
-            DevicePromise.set(device_addr, struct(ARP.Promise, %{cid: cid, amount: paid}))
-          end
-        end
-      end
 
       state
     else
@@ -507,41 +515,24 @@ defmodule ARP.API.TCP.DeviceProtocol do
     end
   end
 
-  defp check_recover_promise(cid, server_addr, device_addr, amount, sign) do
-    decode_server_addr = server_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-    decode_device_addr = device_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
-
-    data =
-      <<cid::size(256), decode_server_addr::binary-size(20), decode_device_addr::binary-size(20),
-        amount::size(256)>>
-
-    {:ok, addr} = Crypto.eth_recover(data, sign)
-
-    if addr == server_addr do
-      true
+  defp check_remote_promise(promise, cid, from, to) do
+    with false <- is_nil(promise),
+         {:ok, promise} <- Poison.decode(promise, as: %Promise{}),
+         true <- Promise.verify(promise, from, to),
+         decoded_promise <- Promise.decode(promise),
+         true <- cid == decoded_promise.cid do
+      decoded_promise
     else
-      false
+      _ -> nil
     end
   end
 
-  defp check_promise(promise, addr, device_addr) do
-    promise = promise |> Poison.decode!(as: %Promise{}) |> Promise.decode()
-
-    result =
-      check_recover_promise(
-        promise.cid,
-        addr,
-        device_addr,
-        promise.amount,
-        promise.sign
-      )
-
-    if result do
-      info = DevicePromise.get(device_addr)
-
-      if info == nil || info.cid == 0 || (promise.cid == info.cid && promise.amount > info.amount) do
-        DevicePromise.set(device_addr, promise)
-      end
+  defp check_local_promise(local_promise, cid, from, to) do
+    if local_promise && local_promise.cid > 0 && cid == local_promise.cid &&
+         Promise.verify(local_promise, from, to) do
+      local_promise
+    else
+      nil
     end
   end
 end

@@ -1,11 +1,22 @@
 defmodule ARP.Config do
   @moduledoc false
 
+  alias ARP.Utils
+
   use GenServer
 
   @config_path Application.get_env(:arp_server, :data_dir)
                |> Path.join("config")
                |> String.to_charlist()
+
+  @external_config [
+    {:port, :integer},
+    {:deposit, :integer},
+    {:max_load, :integer},
+    {:ip, :binary},
+    {:bandwidth, :integer},
+    {:keystore, :map}
+  ]
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -21,55 +32,76 @@ defmodule ARP.Config do
           :ets.new(__MODULE__, [:named_table, read_concurrency: true])
       end
 
-    default_config = Application.get_all_env(:arp_server)
+    fixed_config = Application.get_all_env(:arp_server)
+    :ets.insert(tab, fixed_config)
 
-    config =
-      Enum.reduce(default_config, [], fn {key, value}, acc ->
-        if is_nil(value) do
-          acc
-        else
-          [{key, value} | acc]
-        end
-      end)
-
-    if length(config) > 0 do
-      :ets.insert(__MODULE__, config)
-      write_file(tab)
-    end
+    write_file(tab)
 
     {:ok, tab}
   end
 
   def set(key, value) do
-    GenServer.cast(__MODULE__, {:set, key, value})
+    if List.keymember?(@external_config, key, 0) && check_data_type(value, @external_config[key]) do
+      GenServer.cast(__MODULE__, {:set, key, value})
+    else
+      {:error, :invalid_params}
+    end
+  end
+
+  def set(configs) do
+    if Enum.all?(configs, fn {key, value} ->
+         List.keymember?(@external_config, key, 0) &&
+           check_data_type(value, @external_config[key])
+       end) do
+      GenServer.cast(__MODULE__, {:set, configs})
+    else
+      {:error, :invalid_params}
+    end
   end
 
   def get(key) do
     case :ets.lookup(__MODULE__, key) do
-      [{^key, value}] ->
-        value
-
-      [] ->
-        nil
+      [{^key, value}] -> value
+      [] -> nil
     end
   end
 
   def all do
-    :ets.match_object(__MODULE__, {:"$1", :"$2"})
+    :ets.tab2list(__MODULE__)
   end
 
-  def set_keystore(keystore) do
-    GenServer.cast(__MODULE__, {:set_keystore, keystore})
+  def external do
+    all()
+    |> Enum.filter(fn {key, _} -> List.keymember?(@external_config, key, 0) end)
   end
 
-  def get_keystore do
-    case :ets.lookup(__MODULE__, :keystore) do
-      [{:keystore, value}] ->
-        value
+  def check do
+    configs = all()
+    Enum.all?(@external_config, fn {key, _} -> List.keymember?(configs, key, 0) end)
+  end
 
-      [] ->
-        nil
-    end
+  def encode(configs) do
+    Enum.map(configs, fn {key, value} ->
+      v =
+        case key do
+          :deposit -> Utils.encode_integer(value)
+          _ -> value
+        end
+
+      {key, v}
+    end)
+  end
+
+  def decode(configs) do
+    Enum.map(configs, fn {key, value} ->
+      v =
+        case key do
+          :deposit -> Utils.decode_hex(value)
+          _ -> value
+        end
+
+      {key, v}
+    end)
   end
 
   def handle_cast({:set, key, value}, tab) do
@@ -78,13 +110,17 @@ defmodule ARP.Config do
     {:noreply, tab}
   end
 
-  def handle_cast({:set_keystore, keystore}, tab) do
-    :ets.insert(tab, {:keystore, keystore})
+  def handle_cast({:set, configs}, tab) do
+    :ets.insert(tab, configs)
     write_file(tab)
     {:noreply, tab}
   end
 
-  def write_file(tab) do
+  defp write_file(tab) do
     :ets.tab2file(tab, @config_path, extended_info: [:md5sum])
+  end
+
+  defp check_data_type(data, type) do
+    apply(Kernel, String.to_existing_atom("is_#{type}"), [data])
   end
 end

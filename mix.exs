@@ -4,7 +4,7 @@ defmodule ARP.MixProject do
   def project do
     [
       app: :arp_server,
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -42,8 +42,8 @@ defmodule ARP.MixProject do
       {:keccakf1600, "~> 2.0", hex: :keccakf1600_orig},
       {:pbkdf2, "~> 2.0"},
       {:erlscrypt, git: "git://github.com/K2InformaticsGmbH/erlscrypt.git"},
-      {:ex_prompt, "~> 0.1.3"},
-      {:credo, "~> 0.10.0", only: [:dev, :test], runtime: false}
+      {:credo, "~> 0.10.0", only: [:dev, :test], runtime: false},
+      {:joken, "~> 1.5"}
     ]
   end
 

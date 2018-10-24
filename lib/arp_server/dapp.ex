@@ -74,6 +74,14 @@ defmodule ARP.Dapp do
     end
   end
 
+  def cash(pid) do
+    if pid && Process.alive?(pid) do
+      GenServer.cast(pid, :cash)
+    else
+      {:error, :invalid_dapp}
+    end
+  end
+
   # Callbacks
 
   def init(opts) do
@@ -112,7 +120,7 @@ defmodule ARP.Dapp do
 
         last_promise ->
           if last_promise.cid == promise.cid && promise.amount > last_promise.amount do
-            DappPromise.set(dapp.address, promise)
+            DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
             {:reply, {:ok, promise.amount - last_promise.amount}, dapp}
           else
             {:reply, {:error, :invalid_promise}, dapp}
@@ -121,6 +129,14 @@ defmodule ARP.Dapp do
     else
       {:reply, {:error, :invalid_state}, dapp}
     end
+  end
+
+  def handle_cast(:cash, dapp) do
+    with promise when not is_nil(promise) <- DappPromise.get(dapp.address) do
+      do_cash(promise)
+    end
+
+    {:noreply, dapp}
   end
 
   def handle_info(:init, dapp) do
@@ -193,7 +209,14 @@ defmodule ARP.Dapp do
     case result do
       :success ->
         Logger.info("do expire result #{dapp.address} #{result}")
-        DappPromise.delete(dapp.address)
+
+        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
+             %{cid: cid} = promise,
+             {:ok, %{id: ^cid, paid: paid}} <-
+               Contract.bank_allowance(dapp.address, Account.address()) do
+          DappPromise.set(dapp.address, struct(promise, paid: paid))
+        end
+
         {:stop, :normal, dapp}
 
       :failure ->
@@ -204,6 +227,25 @@ defmodule ARP.Dapp do
         do_expire(dapp.address, last_promise)
         {:noreply, dapp}
     end
+  end
+
+  def handle_info({_ref, {:do_cash_result, result}}, dapp) do
+    case result do
+      :success ->
+        Logger.info("do cash result #{dapp.address} #{result}")
+
+        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
+             %{cid: cid} = promise,
+             {:ok, %{id: ^cid, paid: paid}} <-
+               Contract.bank_allowance(dapp.address, Account.address()) do
+          DappPromise.set(dapp.address, struct(promise, paid: paid))
+        end
+
+      :failure ->
+        Logger.info("do cash result #{dapp.address} #{result}")
+    end
+
+    {:noreply, dapp}
   end
 
   def handle_info(_msg, dapp) do
@@ -227,6 +269,28 @@ defmodule ARP.Dapp do
 
         _ ->
           {:do_expire_result, :failure}
+      end
+    end)
+  end
+
+  def do_cash(promise) do
+    Task.async(fn ->
+      server_addr = Account.address()
+      private_key = Account.private_key()
+
+      with false <- is_nil(promise),
+           {:ok, %{"status" => "0x1"}} <-
+             Contract.bank_cash(
+               private_key,
+               promise.from,
+               server_addr,
+               promise.amount,
+               promise.sign
+             ) do
+        {:do_cash_result, :success}
+      else
+        _ ->
+          {:do_cash_result, :failure}
       end
     end)
   end

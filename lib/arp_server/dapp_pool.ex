@@ -30,12 +30,14 @@ defmodule ARP.DappPool do
   end
 
   def notify_device_offline(dapp_addr, device_addr) do
-    with {_, ip, port} <- get(dapp_addr) do
-      method = "device_offline"
-      sign_data = [device_addr]
+    Task.start(fn ->
+      with {_, ip, port} <- get(dapp_addr) do
+        method = "device_offline"
+        sign_data = [device_addr]
 
-      send_request(dapp_addr, ip, port, method, sign_data)
-    end
+        send_request(dapp_addr, ip, port, method, sign_data)
+      end
+    end)
   end
 
   def load_bound_dapp do
@@ -134,7 +136,7 @@ defmodule ARP.DappPool do
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{refs: refs} = state) do
     {address, refs} = Map.pop(refs, ref)
 
-    if address && :normal != reason do
+    if address && whether_restart(reason) do
       # restart
       case create_inner(address, nil) do
         {:ok, pid, ref} ->
@@ -154,6 +156,22 @@ defmodule ARP.DappPool do
 
   def handle_info(_msg, state) do
     {:noreply, state}
+  end
+
+  defp whether_restart(:normal) do
+    false
+  end
+
+  defp whether_restart(:shutdown) do
+    false
+  end
+
+  defp whether_restart({:shutdown, _}) do
+    false
+  end
+
+  defp whether_restart(_) do
+    true
   end
 
   defp create_inner(address, init_state) do
