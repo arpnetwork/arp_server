@@ -143,9 +143,11 @@ defmodule ARP.DappPool do
           {:noreply, Map.put(state, :refs, refs)}
 
         _ ->
+          :ets.delete(__MODULE__, address)
           {:noreply, Map.put(state, :refs, refs)}
       end
     else
+      :ets.delete(__MODULE__, address)
       {:noreply, Map.put(state, :refs, refs)}
     end
   end

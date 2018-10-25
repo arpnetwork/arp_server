@@ -37,6 +37,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_result_verify_err -2
   @cmd_result_port_err -3
   @cmd_result_max_load_err -4
+  @cmd_result_speed_test_err -5
 
   @timeout 60_000
   @speed_timeout 60_000
@@ -207,19 +208,22 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
-      speed_notify(socket, ul_speed, dl_speed)
+      speed_notify(socket, @cmd_result_success, ul_speed, dl_speed)
     else
+      speed_notify(socket, @cmd_result_speed_test_err)
       transport.close(socket)
     end
 
     {:noreply, state}
   rescue
     _err ->
+      speed_notify(socket, @cmd_result_speed_test_err)
+      Process.sleep(1000)
       {:stop, :normal, state}
   end
 
   def handle_info({:speed_test_notify, ul_speed, dl_speed}, %{socket: socket} = state) do
-    speed_notify(socket, ul_speed, dl_speed)
+    speed_notify(socket, @cmd_result_success, ul_speed, dl_speed)
 
     {:noreply, state}
   end
@@ -437,9 +441,21 @@ defmodule ARP.API.TCP.DeviceProtocol do
     send_resp(data, socket)
   end
 
-  defp speed_notify(socket, upload_speed, download_speed) do
+  defp speed_notify(socket, result) do
     data = %{
       id: @cmd_speed_notify,
+      result: result
+    }
+
+    resp = <<@protocol_type_data>> <> Poison.encode!(data)
+    size = byte_size(resp)
+    :ranch_tcp.send(socket, [<<size::32>>, resp])
+  end
+
+  defp speed_notify(socket, result, upload_speed, download_speed) do
+    data = %{
+      id: @cmd_speed_notify,
+      result: result,
       data: %{
         upload_speed: upload_speed,
         download_speed: download_speed
