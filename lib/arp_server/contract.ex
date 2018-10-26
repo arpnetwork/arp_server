@@ -419,9 +419,7 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    with {:ok, id} <- HttpClient.eth_new_filter(params),
-         {:ok, logs} <- HttpClient.eth_get_filter_logs(id),
-         {:ok, _} <- HttpClient.eth_uninstall_filter(id) do
+    with {:ok, logs} <- HttpClient.eth_get_logs(params) do
       out =
         Enum.reduce(logs, [], fn item, acc ->
           if item["removed"] == false do
@@ -461,9 +459,7 @@ defmodule ARP.Contract do
       topics: [[bind_topic, unbind_topic], nil, encoded_address]
     }
 
-    with {:ok, id} <- HttpClient.eth_new_filter(params),
-         {:ok, logs} <- HttpClient.eth_get_filter_logs(id),
-         {:ok, _} <- HttpClient.eth_uninstall_filter(id) do
+    with {:ok, logs} <- HttpClient.eth_get_logs(params) do
       out =
         Enum.reduce(logs, [], fn item, acc ->
           if item["removed"] == false do
