@@ -65,7 +65,7 @@ defmodule ARP.DeviceNetSpeed do
         data = state[ip]
         device_ids = [device_id | data[:device_ids]]
 
-        if data[:upload_speed] >= @min_upload_speed do
+        if data[:upload_speed] / length(device_ids) >= @min_upload_speed do
           update_device(device_ids, data[:upload_speed], data[:download_speed])
 
           DeviceProtocol.speed_test_notify(tcp_pid)

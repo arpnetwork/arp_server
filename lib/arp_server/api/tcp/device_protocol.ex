@@ -121,7 +121,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
     # Delete device info
     with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
-      DeviceNetSpeed.offline(dev.ip, dev.address)
+      DeviceNetSpeed.offline(dev.original_ip, dev.address)
       DevicePool.offline(dev.address)
     end
   end
