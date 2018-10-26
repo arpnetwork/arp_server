@@ -15,6 +15,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     Promise
   }
 
+  require Logger
+
   use GenServer
 
   @protocol_packet 4
@@ -96,6 +98,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     :ok = :ranch.accept_ack(ref)
     :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
+    Logger.info("socket connect." <> inspect(socket))
+
     :gen_server.enter_loop(
       __MODULE__,
       [],
@@ -105,7 +109,13 @@ defmodule ARP.API.TCP.DeviceProtocol do
   end
 
   @doc false
-  def terminate(_reason, %{socket: _socket}) do
+  def terminate(reason, %{socket: socket} = state) do
+    device_addr = Map.get(state, :device_addr)
+
+    Logger.info(
+      "socket disconnect." <> inspect(socket) <> " reason: #{reason}, device addr: #{device_addr}"
+    )
+
     # Delete device info
     with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
       DeviceNetSpeed.offline(dev.ip, dev.address)
@@ -212,6 +222,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     else
       speed_notify(socket, @cmd_result_speed_test_err)
       transport.close(socket)
+      device_addr = Map.get(state, :device_addr)
+      Logger.info("device offline, reason: speed test hash err, device addr: #{device_addr}")
     end
 
     {:noreply, state}
@@ -219,6 +231,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     _err ->
       speed_notify(socket, @cmd_result_speed_test_err)
       Process.sleep(1000)
+      device_addr = Map.get(state, :device_addr)
+      Logger.info("device offline, reason: speed test err, device addr: #{device_addr}")
       {:stop, :normal, state}
   end
 
@@ -263,6 +277,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
       }
     }
     |> send_resp(socket)
+
+    Logger.info("device offline, reason: repeat connect, device addr: #{addr}")
 
     {:stop, :normal, :ok, state}
   end
@@ -334,22 +350,27 @@ defmodule ARP.API.TCP.DeviceProtocol do
       DevicePool.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
         state.transport.close(socket)
+        Logger.info("online faild, reason: max load err, device addr: #{device_addr}")
 
       !device_addr ->
         online_resp(socket, @cmd_result_verify_err)
         state.transport.close(socket)
+        Logger.info("online faild, reason: device verify err")
 
       !Enum.member?(@compatible_ver, ver) ->
         online_resp(socket, @cmd_result_ver_err)
         state.transport.close(socket)
+        Logger.info("online faild, reason: ver err, device addr: #{device_addr}")
 
       Enum.all?([data[:tcp_port], data[:http_port]], fn x -> x >= 0 && x <= 65_535 end) == false ->
         online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
+        Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
 
       :error == Device.check_port(host |> to_charlist(), data[:tcp_port], data[:http_port]) ->
         online_resp(socket, @cmd_result_port_err)
         state.transport.close(socket)
+        Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
 
       true ->
         addr = Account.address()
@@ -368,10 +389,13 @@ defmodule ARP.API.TCP.DeviceProtocol do
           DeviceNetSpeed.online(ip, device_addr, self())
 
           online_resp(socket, @cmd_result_success)
+
+          Logger.info("online success, device addr: #{device_addr}")
         else
           _ ->
             online_resp(socket, @cmd_result_verify_err)
             state.transport.close(socket)
+            Logger.info("online faild, reason: online err, device addr: #{device_addr}")
         end
     end
 
