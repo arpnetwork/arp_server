@@ -68,7 +68,7 @@ defmodule ARP.DeviceNetSpeed do
         if data[:upload_speed] >= @min_upload_speed do
           update_device(device_ids, data[:upload_speed], data[:download_speed])
 
-          DeviceProtocol.speed_test_notify(tcp_pid, data[:upload_speed], data[:download_speed])
+          DeviceProtocol.speed_test_notify(tcp_pid)
 
           %{state | timeout: Map.delete(timeout, ip)}
           |> Map.put(ip, %{data | device_ids: device_ids})

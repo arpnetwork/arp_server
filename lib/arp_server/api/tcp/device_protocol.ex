@@ -40,14 +40,16 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_result_port_err -3
   @cmd_result_max_load_err -4
   @cmd_result_speed_test_err -5
+  @cmd_result_speed_test_low -6
 
   @timeout 60_000
   @speed_timeout 60_000
 
   @speed_test_packet_len 2_621_440
   @speed_test_interval 200
+  @min_upload_speed 2_097_152
 
-  @ver "1.0"
+  @ver "1.1"
   @compatible_ver [@ver]
 
   @doc false
@@ -78,8 +80,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     Process.send(pid, :speed_test, [])
   end
 
-  def speed_test_notify(pid, ul_speed, dl_speed) do
-    Process.send(pid, {:speed_test_notify, ul_speed, dl_speed}, [])
+  def speed_test_notify(pid) do
+    Process.send(pid, :speed_test_notify, [])
   end
 
   @doc """
@@ -113,7 +115,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     device_addr = Map.get(state, :device_addr)
 
     Logger.info(
-      "socket disconnect." <> inspect(socket) <> " reason: #{reason}, device addr: #{device_addr}"
+      "socket disconnect." <>
+        inspect(socket) <> " reason:" <> inspect(reason) <> ", device addr: #{device_addr}"
     )
 
     # Delete device info
@@ -218,10 +221,17 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
       :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
-      speed_notify(socket, @cmd_result_success, ul_speed, dl_speed)
+      if ul_speed >= @min_upload_speed do
+        speed_notify(socket, @cmd_result_success)
+      else
+        speed_notify(socket, @cmd_result_speed_test_low)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
+        device_addr = Map.get(state, :device_addr)
+        Logger.info("device offline, reason: speed test low, device addr: #{device_addr}")
+      end
     else
-      speed_notify(socket, @cmd_result_speed_test_err)
-      transport.close(socket)
+      speed_err_notify(socket)
+      Process.send_after(self(), {:tcp_closed, socket}, 5000)
       device_addr = Map.get(state, :device_addr)
       Logger.info("device offline, reason: speed test hash err, device addr: #{device_addr}")
     end
@@ -229,15 +239,15 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:noreply, state}
   rescue
     _err ->
-      speed_notify(socket, @cmd_result_speed_test_err)
+      speed_err_notify(socket)
       Process.sleep(1000)
       device_addr = Map.get(state, :device_addr)
       Logger.info("device offline, reason: speed test err, device addr: #{device_addr}")
       {:stop, :normal, state}
   end
 
-  def handle_info({:speed_test_notify, ul_speed, dl_speed}, %{socket: socket} = state) do
-    speed_notify(socket, @cmd_result_success, ul_speed, dl_speed)
+  def handle_info(:speed_test_notify, %{socket: socket} = state) do
+    speed_notify(socket, @cmd_result_success)
 
     {:noreply, state}
   end
@@ -349,27 +359,27 @@ defmodule ARP.API.TCP.DeviceProtocol do
     cond do
       DevicePool.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
-        state.transport.close(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: max load err, device addr: #{device_addr}")
 
       !device_addr ->
         online_resp(socket, @cmd_result_verify_err)
-        state.transport.close(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: device verify err")
 
       !Enum.member?(@compatible_ver, ver) ->
         online_resp(socket, @cmd_result_ver_err)
-        state.transport.close(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: ver err, device addr: #{device_addr}")
 
       Enum.all?([data[:tcp_port], data[:http_port]], fn x -> x >= 0 && x <= 65_535 end) == false ->
         online_resp(socket, @cmd_result_port_err)
-        state.transport.close(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
 
       :error == Device.check_port(host |> to_charlist(), data[:tcp_port], data[:http_port]) ->
         online_resp(socket, @cmd_result_port_err)
-        state.transport.close(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
 
       true ->
@@ -394,7 +404,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         else
           _ ->
             online_resp(socket, @cmd_result_verify_err)
-            state.transport.close(socket)
+            Process.send_after(self(), {:tcp_closed, socket}, 5000)
             Logger.info("online faild, reason: online err, device addr: #{device_addr}")
         end
     end
@@ -473,10 +483,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
     send_resp(data, socket)
   end
 
-  defp speed_notify(socket, result) do
+  defp speed_err_notify(socket) do
     data = %{
       id: @cmd_speed_notify,
-      result: result
+      result: @cmd_result_speed_test_err
     }
 
     resp = <<@protocol_type_data>> <> Poison.encode!(data)
@@ -484,14 +494,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
     :ranch_tcp.send(socket, [<<size::32>>, resp])
   end
 
-  defp speed_notify(socket, result, upload_speed, download_speed) do
+  defp speed_notify(socket, result) do
     data = %{
       id: @cmd_speed_notify,
-      result: result,
-      data: %{
-        upload_speed: upload_speed,
-        download_speed: download_speed
-      }
+      result: result
     }
 
     send_resp(data, socket)
