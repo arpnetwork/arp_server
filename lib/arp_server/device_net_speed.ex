@@ -11,7 +11,7 @@ defmodule ARP.DeviceNetSpeed do
 
   @interval 60_000
   @speed_timeout 86_400
-  @min_upload_speed 2_097_152
+  @min_upload_speed 524_288
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)

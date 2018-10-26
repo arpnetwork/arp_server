@@ -47,7 +47,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   @speed_test_packet_len 2_621_440
   @speed_test_interval 200
-  @min_upload_speed 2_097_152
+  @min_upload_speed 524_288
 
   @ver "1.1"
   @compatible_ver [@ver]
