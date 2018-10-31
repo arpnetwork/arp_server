@@ -322,17 +322,18 @@ defmodule ARP.Admin do
 
   def dapp_list do
     list = DappPool.get_all()
-    {:ok, Enum.map(list, fn {addr, _, _, _} -> %{address: addr} end)}
+    {:ok, Enum.map(list, fn {addr, _} -> %{address: addr} end)}
   end
 
   def dapp_detail(address) do
     case DappPool.get(address) do
-      {_, ip, port} ->
-        device_list = DevicePool.get_by_dapp(address)
-        {:ok, %{ip: ip, port: port, device_count: length(device_list)}}
-
-      _ ->
+      nil ->
         {:error, :unknow_address}
+
+      pid ->
+        device_list = DevicePool.get_by_dapp(address)
+        dapp = Dapp.get(pid)
+        {:ok, %{ip: dapp.ip, port: dapp.port, device_count: length(device_list)}}
     end
   end
 
@@ -342,7 +343,7 @@ defmodule ARP.Admin do
   end
 
   def cash_dapp_promise(address) do
-    with {pid, _, _} <- DappPool.get(address),
+    with pid when not is_nil(pid) <- DappPool.get(address),
          :ok <- Dapp.cash(pid) do
       :ok
     else

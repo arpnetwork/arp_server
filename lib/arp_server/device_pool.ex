@@ -2,7 +2,7 @@ defmodule ARP.DevicePool do
   @moduledoc false
 
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.{DappPool, Device}
+  alias ARP.{DappPool, Device, Utils}
 
   use GenServer
 
@@ -177,10 +177,10 @@ defmodule ARP.DevicePool do
   end
 
   def handle_call({:request, dapp_address, price, ip, port}, _from, state) do
-    with :ok <- DappPool.update(dapp_address, ip, port),
+    with :ok <- DappPool.set(dapp_address, ip, port),
          {:ok, dev} <- find_device(%{price: price}),
          {pid, _dev} <- get(dev.address),
-         :ok <- Device.allocating(pid, dapp_address),
+         :ok <- Device.allocating(pid, dapp_address, price),
          # prepare device
          :ok <- DeviceProtocol.user_request(dev.tcp_pid, dapp_address, ip, port, price) do
       dev_info = %{
@@ -266,7 +266,7 @@ defmodule ARP.DevicePool do
   defp match(device, filters) do
     res =
       Enum.reject(filters, fn {key, value} ->
-        if Device.blank?(value) do
+        if Utils.blank?(value) do
           true
         else
           case key do

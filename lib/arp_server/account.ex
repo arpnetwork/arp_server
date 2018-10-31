@@ -7,10 +7,10 @@ defmodule ARP.Account do
 
   alias ARP.{
     Config,
-    Contract,
     Crypto,
     Dapp,
     DappPool,
+    Device,
     DevicePool,
     DevicePromise,
     Promise,
@@ -32,12 +32,10 @@ defmodule ARP.Account do
     with {:ok, promise} <- Poison.decode(promise, as: %ARP.Promise{}),
          true <- Promise.verify(promise, dapp_addr, self_addr),
          promise = Promise.decode(promise),
-         true <- check_dapp_amount(promise.amount, dapp_addr, self_addr),
-         {dapp_pid, _, _} <- DappPool.get(dapp_addr),
-         {:ok, incremental_amount} <- Dapp.save_promise(dapp_pid, promise, increment) do
-      device_promise =
-        calc_device_promise(incremental_amount, device_addr, self_addr, private_key)
-
+         dapp_pid when not is_nil(dapp_pid) <- DappPool.get(dapp_addr),
+         :ok <- Dapp.save_promise(dapp_pid, promise, increment),
+         device_promise = calc_device_promise(increment, device_addr, self_addr, private_key),
+         true <- check_device_amount(device_addr, device_promise.amount) do
       DevicePromise.set(device_addr, device_promise)
 
       with {_, dev} <- DevicePool.get(device_addr) do
@@ -122,9 +120,9 @@ defmodule ARP.Account do
     end
   end
 
-  defp check_dapp_amount(promise_amount, dapp_addr, server_addr) do
-    with {:ok, %{amount: amount}} when promise_amount <= amount <-
-           Contract.bank_allowance(dapp_addr, server_addr) do
+  defp check_device_amount(device_addr, amount) do
+    with {pid, _} <- DevicePool.get(device_addr),
+         :ok <- Device.check_allowance(pid, amount) do
       true
     else
       _ ->

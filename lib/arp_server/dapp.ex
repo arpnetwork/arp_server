@@ -3,58 +3,37 @@ defmodule ARP.Dapp do
 
   require Logger
 
-  alias ARP.{Account, Contract, DappPromise, DevicePool}
+  alias ARP.{Account, Contract, DappPromise, DevicePool, Nonce, Promise, Utils}
+  alias ARP.API.JSONRPC2.Protocol
+  alias JSONRPC2.Client.HTTP
 
   use GenServer, restart: :temporary
 
-  @init 0
-  @normal 1
-  @dying 2
+  @check_interval 1000 * 60 * 10
 
-  defstruct [:address, state: @init]
+  @normal 0
+  @dying 1
+  @out_of_allowance 2
+
+  defstruct [:address, :ip, :port, :allowance, state: @normal]
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
-  def first_check(dapp_addr) do
-    server_addr = Account.address()
-
-    with {:ok, %{id: id, expired: expired, proxy: proxy, amount: amount}} <-
-           Contract.bank_allowance(dapp_addr, server_addr),
-         {:ok, %{expired: bind_expired, server: server}} <-
-           Contract.get_dapp_bind_info(dapp_addr, server_addr) do
-      registry_addr = Application.get_env(:arp_server, :registry_contract_address)
-
-      last_promise = DappPromise.get(dapp_addr)
-
-      now = DateTime.utc_now() |> DateTime.to_unix()
-      one_day = 60 * 60 * 24
-
-      cond do
-        id == 0 || server != server_addr || proxy != registry_addr ->
-          Logger.info("dapp not approve or bind. dapp address: #{dapp_addr}")
-          DappPromise.delete(dapp_addr)
-          :error
-
-        id != 0 && last_promise && last_promise.cid != id ->
-          Logger.info("find invalid promise with old cid, delete it. dapp address: #{dapp_addr}")
-
-          DappPromise.delete(dapp_addr)
-          :normal
-
-        (expired != 0 && now >= expired - one_day) ||
-          (bind_expired != 0 && now >= bind_expired - one_day) ||
-            (last_promise && last_promise.amount >= amount * 0.8) ->
-          Logger.info("dapp is dying. dapp address: #{dapp_addr}")
-          :dying
-
-        true ->
-          :normal
-      end
+  def set(pid, ip, port) do
+    if pid && Process.alive?(pid) do
+      GenServer.call(pid, {:set, ip, port})
     else
-      _ ->
-        :error
+      {:error, :invalid_dapp}
+    end
+  end
+
+  def get(pid) do
+    if pid && Process.alive?(pid) do
+      GenServer.call(pid, :get)
+    else
+      {:error, :invalid_dapp}
     end
   end
 
@@ -66,9 +45,30 @@ defmodule ARP.Dapp do
     end
   end
 
-  def save_promise(pid, promise, increment) do
+  def save_promise(pid, promise, increment, tries \\ 0)
+
+  def save_promise(pid, promise, increment, tries) when tries < 10 do
     if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:save_promise, promise, increment})
+      case GenServer.call(pid, {:save_promise, promise, increment}) do
+        :await ->
+          Process.sleep(100)
+          save_promise(pid, promise, increment, tries + 1)
+
+        res ->
+          res
+      end
+    else
+      {:error, :invalid_dapp}
+    end
+  end
+
+  def save_promise(_pid, _promise, _increment, _tries) do
+    {:error, :lost_promise}
+  end
+
+  def device_offline(pid, device_addr) do
+    if pid && Process.alive?(pid) do
+      GenServer.cast(pid, {:device_offline, device_addr})
     else
       {:error, :invalid_dapp}
     end
@@ -86,24 +86,42 @@ defmodule ARP.Dapp do
 
   def init(opts) do
     address = opts[:address]
-    init_state = opts[:init_state]
+    ip = opts[:ip]
+    port = opts[:port]
 
-    case init_state do
-      :normal ->
-        {:ok, %__MODULE__{address: address, state: @normal}}
+    server_addr = Account.address()
+    last_promise = DappPromise.get(address) || %Promise{}
 
+    with :ok <- check_bound(address, server_addr),
+         {:ok, allowance} <- check_allowance(address, server_addr, last_promise) do
+      if last_promise.cid != nil && last_promise.cid != allowance.id do
+        Logger.info("find invalid promise with old cid, delete it. dapp address: #{address}")
+        DappPromise.delete(address)
+      end
+
+      Process.send_after(self(), :check, @check_interval)
+
+      {:ok,
+       %__MODULE__{address: address, ip: ip, port: port, allowance: allowance, state: @normal}}
+    else
       :dying ->
-        last_promise = DappPromise.get(address)
-        do_expire(address, last_promise)
-        {:ok, %__MODULE__{address: address, state: @dying}}
+        do_cash(last_promise)
+        {:ok, %__MODULE__{address: address, ip: ip, port: port, state: @dying}}
+
+      :out_of_allowance ->
+        {:ok, %__MODULE__{address: address, ip: ip, port: port, state: @out_of_allowance}}
 
       :error ->
         {:stop, :normal}
-
-      nil ->
-        Process.send(self(), :init, [])
-        {:ok, %__MODULE__{address: address, state: @init}}
     end
+  end
+
+  def handle_call({:set, ip, port}, _from, dapp) do
+    {:reply, :ok, struct(dapp, ip: ip, port: port)}
+  end
+
+  def handle_call(:get, _from, dapp) do
+    {:reply, dapp, dapp}
   end
 
   def handle_call(:state, _from, dapp) do
@@ -111,24 +129,50 @@ defmodule ARP.Dapp do
   end
 
   def handle_call({:save_promise, promise, increment}, _from, dapp) do
-    if dapp.state == @normal do
-      case DappPromise.get(dapp.address) do
-        nil ->
-          # first pay or lost data
-          DappPromise.set(dapp.address, promise)
-          {:reply, {:ok, increment}, dapp}
+    case dapp.state do
+      @normal ->
+        last_promise = DappPromise.get(dapp.address)
 
-        last_promise ->
-          if last_promise.cid == promise.cid && promise.amount > last_promise.amount do
+        case check_promise(last_promise, promise, increment, dapp.allowance) do
+          :ok ->
             DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
-            {:reply, {:ok, promise.amount - last_promise.amount}, dapp}
-          else
+
+            if promise.amount == dapp.allowance.amount do
+              do_cash(promise)
+              {:reply, :ok, struct(dapp, state: @out_of_allowance)}
+            else
+              {:reply, :ok, dapp}
+            end
+
+          :wait ->
+            {:reply, :wait, dapp}
+
+          :out_of_allowance ->
+            {:reply, {:error, :out_of_allowance}, dapp}
+
+          :invalid_promise ->
             {:reply, {:error, :invalid_promise}, dapp}
-          end
-      end
-    else
-      {:reply, {:error, :invalid_state}, dapp}
+        end
+
+      @dying ->
+        {:reply, {:error, :expired_in_one_day}, dapp}
+
+      @out_of_allowance ->
+        {:reply, {:error, :out_of_allowance}, dapp}
     end
+  end
+
+  def handle_cast({:device_offline, device_addr}, dapp) do
+    if dapp.ip && dapp.port do
+      Task.start(fn ->
+        method = "device_offline"
+        sign_data = [device_addr]
+
+        send_request(dapp.address, dapp.ip, dapp.port, method, sign_data)
+      end)
+    end
+
+    {:noreply, dapp}
   end
 
   def handle_cast(:cash, dapp) do
@@ -139,101 +183,41 @@ defmodule ARP.Dapp do
     {:noreply, dapp}
   end
 
-  def handle_info(:init, dapp) do
-    case first_check(dapp.address) do
-      :normal ->
-        dapp = struct(dapp, state: @normal)
-        {:noreply, dapp}
-
-      :dying ->
-        last_promise = DappPromise.get(dapp.address)
-        do_expire(dapp.address, last_promise)
-        dapp = struct(dapp, state: @dying)
-        {:noreply, dapp}
-
-      :error ->
-        {:stop, :normal, dapp}
-    end
-  end
-
   def handle_info(:check, dapp) do
-    if dapp.state == @normal do
-      # check expired
-      Task.async(fn ->
-        server_addr = Account.address()
+    # check expired and allowance
+    address = dapp.address
+    server_addr = Account.address()
+    last_promise = DappPromise.get(address) || %Promise{}
 
-        with {:ok, %{amount: amount, expired: expired}} <-
-               Contract.bank_allowance(dapp.address, server_addr),
-             {:ok, %{expired: bind_expired}} <-
-               Contract.get_dapp_bind_info(dapp.address, server_addr) do
-          last_promise = DappPromise.get(dapp.address)
-
-          now = DateTime.utc_now() |> DateTime.to_unix()
-          one_day = 60 * 60 * 24
-
-          if (expired != 0 && now >= expired - one_day) ||
-               (bind_expired != 0 && now >= bind_expired - one_day) ||
-               (last_promise && last_promise.amount >= amount * 0.8) do
-            Logger.info("dapp is dying or approval is not enough")
-            {:check_expired_result, :dying}
-          else
-            {:check_expired_result, :ok}
-          end
-        else
-          _ ->
-            {:check_expired_result, :ok}
-        end
-      end)
-    end
-
-    {:noreply, dapp}
-  end
-
-  def handle_info({_ref, {:check_expired_result, result}}, dapp) do
     dapp =
-      case result do
-        :ok ->
-          dapp
-
+      with :ok <- check_bound(address, server_addr),
+           {:ok, allowance} <- check_allowance(address, server_addr, last_promise) do
+        struct(dapp, allowance: allowance, state: @normal)
+      else
         :dying ->
-          last_promise = DappPromise.get(dapp.address)
-
-          do_expire(dapp.address, last_promise)
+          # release devices
+          DevicePool.release_by_dapp(address)
+          do_cash(last_promise)
           struct(dapp, state: @dying)
+
+        :out_of_allowance ->
+          do_cash(last_promise)
+          struct(dapp, state: @out_of_allowance)
+
+        _ ->
+          dapp
       end
 
+    Process.send_after(self(), :check, @check_interval)
+
     {:noreply, dapp}
-  end
-
-  def handle_info({_ref, {:do_expire_result, result}}, dapp) do
-    case result do
-      :success ->
-        Logger.info("do expire result #{dapp.address} #{result}")
-
-        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
-             %{cid: cid} = promise,
-             {:ok, %{id: ^cid, paid: paid}} <-
-               Contract.bank_allowance(dapp.address, Account.address()) do
-          DappPromise.set(dapp.address, struct(promise, paid: paid))
-        end
-
-        {:stop, :normal, dapp}
-
-      :failure ->
-        Logger.info("do expire result #{dapp.address} #{result}, retry")
-
-        last_promise = DappPromise.get(dapp.address)
-
-        do_expire(dapp.address, last_promise)
-        {:noreply, dapp}
-    end
   end
 
   def handle_info({_ref, {:do_cash_result, result}}, dapp) do
+    Logger.info("do cash result #{dapp.address} #{result}.")
+
     case result do
       :success ->
-        Logger.info("do cash result #{dapp.address} #{result}")
-
         with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
              %{cid: cid} = promise,
              {:ok, %{id: ^cid, paid: paid}} <-
@@ -242,7 +226,18 @@ defmodule ARP.Dapp do
         end
 
       :failure ->
-        Logger.info("do cash result #{dapp.address} #{result}")
+        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
+             {:ok, %{id: cid, paid: paid}} <-
+               Contract.bank_allowance(dapp.address, Account.address()) do
+          if promise.cid != cid do
+            DappPromise.delete(dapp.address)
+          else
+            DappPromise.set(dapp.address, struct(promise, paid: paid))
+          end
+        end
+
+      :retry ->
+        do_cash(DappPromise.get(dapp.address))
     end
 
     {:noreply, dapp}
@@ -252,28 +247,77 @@ defmodule ARP.Dapp do
     {:noreply, dapp}
   end
 
-  def do_expire(address, promise) do
-    Task.async(fn ->
-      # release devices
-      DevicePool.release_by_dapp(address)
+  defp check_bound(dapp_addr, server_addr) do
+    with {:ok, %{expired: bind_expired, server: server}} <-
+           Contract.get_dapp_bind_info(dapp_addr, server_addr) do
+      now = DateTime.utc_now() |> DateTime.to_unix()
+      one_day = 60 * 60 * 24
 
-      with false <- is_nil(promise),
-           server_addr = Account.address(),
-           private_key = Account.private_key(),
-           {:ok, %{"status" => "0x1"}} <-
-             Contract.bank_cash(private_key, address, server_addr, promise.amount, promise.sign) do
-        {:do_expire_result, :success}
-      else
+      cond do
+        server != server_addr ->
+          Logger.info("dapp is not bound. dapp address: #{dapp_addr}")
+          :error
+
+        bind_expired != 0 && now >= bind_expired - one_day ->
+          Logger.info("dapp is dying. dapp address: #{dapp_addr}")
+          :dying
+
         true ->
-          nil
-
-        _ ->
-          {:do_expire_result, :failure}
+          :ok
       end
-    end)
+    end
   end
 
-  def do_cash(promise) do
+  defp check_allowance(dapp_addr, server_addr, last_promise) do
+    with {:ok, allowance} <- Contract.bank_allowance(dapp_addr, server_addr) do
+      %{id: id, amount: amount, paid: paid, expired: expired, proxy: proxy} = allowance
+      now = DateTime.utc_now() |> DateTime.to_unix()
+      one_day = 60 * 60 * 24
+      registry_addr = Application.get_env(:arp_server, :registry_contract_address)
+
+      cond do
+        id == 0 || proxy != registry_addr ->
+          Logger.info("dapp is not approved. dapp address: #{dapp_addr}")
+          :error
+
+        paid == amount || (last_promise.cid == allowance.id && last_promise.amount == amount) ->
+          Logger.info("out of allowance. dapp address: #{dapp_addr}")
+          :out_of_allowance
+
+        expired != 0 && now >= expired - one_day ->
+          Logger.info("dapp is dying. dapp address: #{dapp_addr}")
+          :dying
+
+        true ->
+          {:ok, allowance}
+      end
+    end
+  end
+
+  defp check_promise(last_promise, promise, increment, allowance) do
+    cond do
+      promise.amount > allowance.amount ->
+        :out_of_allowance
+
+      is_nil(last_promise) ->
+        # first pay or lost data
+        :ok
+
+      last_promise.cid != promise.cid ->
+        :invalid_promise
+
+      promise.amount - last_promise.amount == increment ->
+        :ok
+
+      promise.amount - last_promise.amount > increment ->
+        :wait
+
+      true ->
+        :invalid_promise
+    end
+  end
+
+  defp do_cash(promise) do
     Task.async(fn ->
       server_addr = Account.address()
       private_key = Account.private_key()
@@ -289,9 +333,37 @@ defmodule ARP.Dapp do
              ) do
         {:do_cash_result, :success}
       else
-        _ ->
+        {:ok, %{"status" => "0x0"}} ->
           {:do_cash_result, :failure}
+
+        {:error, _} ->
+          {:do_cash_result, :retry}
+
+        _ ->
+          nil
       end
     end)
+  end
+
+  defp send_request(dapp_address, ip, port, method, data) do
+    private_key = Account.private_key()
+    address = Account.address()
+
+    nonce = address |> Nonce.get_and_update_nonce(dapp_address) |> Utils.encode_integer()
+    url = "http://#{ip}:#{port}"
+
+    sign = Protocol.sign(method, data, nonce, dapp_address, private_key)
+
+    case HTTP.call(url, method, data ++ [nonce, sign]) do
+      {:ok, result} ->
+        if Protocol.verify_resp_sign(result, address, dapp_address) do
+          {:ok, result}
+        else
+          {:error, :verify_error}
+        end
+
+      {:error, err} ->
+        {:error, err}
+    end
   end
 end

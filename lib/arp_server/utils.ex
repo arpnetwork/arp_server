@@ -46,4 +46,14 @@ defmodule ARP.Utils do
     fourth = String.to_integer(head)
     first + second + third + fourth
   end
+
+  def blank?(value) when is_binary(value) do
+    byte_size(value) == 0
+  end
+
+  def blank?(value) when is_integer(value) do
+    value == 0
+  end
+
+  def blank?(nil), do: true
 end

@@ -3,6 +3,8 @@ defmodule ARP.Device do
   Record online device.
   """
 
+  require Logger
+
   alias ARP.{Account, Config, Contract, DevicePool, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
 
@@ -23,6 +25,7 @@ defmodule ARP.Device do
     :original_ip,
     :tcp_port,
     :dapp_address,
+    :dapp_price,
     :brand,
     :model,
     :cpu,
@@ -45,8 +48,32 @@ defmodule ARP.Device do
     state: @pending
   ]
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
+  def is_pending?(device) do
+    device.state == @pending
+  end
+
+  def is_idle?(device) do
+    device.state == @idle
+  end
+
+  def is_allocating?(device) do
+    device.state == @allocating
+  end
+
+  def set_pending(device) do
+    %{device | state: @pending}
+  end
+
+  def set_idle(device) do
+    %{device | state: @idle, dapp_address: nil}
+  end
+
+  def set_allocating(device, dapp_address, dapp_price) do
+    if device.state == @idle do
+      {:ok, %{device | state: @allocating, dapp_address: dapp_address, dapp_price: dapp_price}}
+    else
+      {:error, :invalid_state}
+    end
   end
 
   def check_port(host, tcp_port) do
@@ -63,6 +90,10 @@ defmodule ARP.Device do
       _ ->
         :error
     end
+  end
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts)
   end
 
   def release(pid, address, dapp_address) do
@@ -89,9 +120,17 @@ defmodule ARP.Device do
     end
   end
 
-  def allocating(pid, dapp_address) do
+  def allocating(pid, dapp_address, dapp_price) do
     if Process.alive?(pid) do
-      GenServer.call(pid, {:allocating, dapp_address})
+      GenServer.call(pid, {:allocating, dapp_address, dapp_price})
+    else
+      {:error, :invalid_pid}
+    end
+  end
+
+  def check_allowance(pid, amount) do
+    if pid && Process.alive?(pid) do
+      GenServer.call(pid, {:check_allowance, amount})
     else
       {:error, :invalid_pid}
     end
@@ -101,10 +140,18 @@ defmodule ARP.Device do
 
   def init(opts) do
     dev = opts[:device]
+    server_addr = Account.address()
 
-    Process.send_after(self(), :check_interval, 30_000)
+    with {:ok, allowance} <- Contract.bank_allowance(server_addr, dev.address),
+         true <- allowance.id > 0,
+         true <- allowance.expired == 0 do
+      Process.send_after(self(), :check, @check_interval)
 
-    {:ok, %{address: dev.address, increasing: false}}
+      {:ok, %{address: dev.address, allowance: allowance, increasing: false}}
+    else
+      _ ->
+        {:stop, :normal}
+    end
   end
 
   def handle_call(:idle, _from, %{address: address} = state) do
@@ -136,14 +183,35 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_call({:allocating, dapp_address}, _from, %{address: address} = state) do
+  def handle_call({:allocating, dapp_address, dapp_price}, _from, %{address: address} = state) do
     with {_pid, dev} <- DevicePool.get(address),
-         {:ok, dev} <- set_allocating(dev, dapp_address),
+         {:ok, dev} <- set_allocating(dev, dapp_address, dapp_price),
          true <- DevicePool.update(address, dev) do
       {:reply, :ok, state}
     else
       _ ->
         {:reply, {:error, :device_not_found}, state}
+    end
+  end
+
+  def handle_call(
+        {:check_allowance, amount},
+        _from,
+        %{address: address, allowance: allowance, increasing: increasing} = state
+      ) do
+    approval_amount = Config.get(:device_deposit)
+
+    cond do
+      allowance.amount < amount ->
+        {:reply, :error, state}
+
+      !increasing && allowance.amount - amount < approval_amount ->
+        increase_approval(address, approval_amount, allowance.expired)
+        Logger.info("device allowance less than 100 ARP, increasing. address: #{address}")
+        {:reply, :ok, %{state | increasing: true}}
+
+      true ->
+        {:reply, :ok, state}
     end
   end
 
@@ -161,74 +229,43 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_info(:check_interval, %{address: address, increasing: increasing} = state) do
-    pid = self()
-    Process.send_after(pid, :check_interval, @check_interval)
-
+  def handle_info(:check, %{address: address} = state) do
     server_addr = Account.address()
-    private_key = Account.private_key()
 
-    with %{cid: cid, amount: device_amount} <- DevicePromise.get(address),
-         {:ok, %{id: allowance_cid, amount: current_amount, expired: expired}} <-
-           Contract.bank_allowance(server_addr, address) do
-      approval_amount = Config.get(:device_deposit)
-
-      if increasing == false && cid == allowance_cid &&
-           device_amount > round(current_amount * 0.8) do
-        Task.start(fn ->
-          Contract.bank_increase_approval(private_key, address, approval_amount, expired)
-          Process.send(pid, :change_increasing, [])
-        end)
-
-        {:noreply, %{state | increasing: true}}
-      else
-        {:noreply, state}
-      end
+    with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, address),
+         promise <- DevicePromise.get(address),
+         true <- id == 0 || (!is_nil(promise) && promise.cid != id) do
+      DevicePromise.delete(address)
+      Logger.info("device unbound. address: #{address}")
+      {:stop, :normal, state}
     else
       _ ->
+        Process.send_after(self(), :check, @check_interval)
         {:noreply, state}
     end
   end
 
-  def handle_info(:change_increasing, state) do
-    {:noreply, %{state | increasing: false}}
+  def handle_info({_ref, :increase_result, allowance}, state) do
+    {:noreply, %{state | allowance: allowance, increasing: false}}
   end
 
-  def is_pending?(device) do
-    device.state == @pending
+  def handle_info(_, state) do
+    {:noreply, state}
   end
 
-  def is_idle?(device) do
-    device.state == @idle
-  end
+  defp increase_approval(address, amount, expired) do
+    Task.async(fn ->
+      server_addr = Account.address()
+      private_key = Account.private_key()
 
-  def is_allocating?(device) do
-    device.state == @allocating
-  end
+      with {:ok, %{"status" => "0x1"}} <-
+             Contract.bank_increase_approval(private_key, address, amount, expired) do
+        Logger.info("increase allowance success. address: #{address}")
+      end
 
-  def set_pending(device) do
-    %{device | state: @pending}
-  end
+      new_allowance = Contract.bank_allowance(server_addr, address)
 
-  def set_idle(device) do
-    %{device | state: @idle, dapp_address: nil}
+      {:increase_result, new_allowance}
+    end)
   end
-
-  def set_allocating(device, dapp_address) do
-    if device.state == @idle do
-      {:ok, %{device | state: @allocating, dapp_address: dapp_address}}
-    else
-      {:error, :invalid_state}
-    end
-  end
-
-  def blank?(value) when is_binary(value) do
-    byte_size(value) == 0
-  end
-
-  def blank?(value) when is_integer(value) do
-    value == 0
-  end
-
-  def blank?(nil), do: true
 end

@@ -382,12 +382,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
     addr = Account.address()
 
     with {:ok, device_addr} <- Crypto.eth_recover(salt, sign),
-         {:ok, %{server: server}} when server == addr <-
-           Contract.get_device_bind_info(device_addr) do
+         {:ok, %{server: ^addr}} <- Contract.get_device_bind_info(device_addr),
+         {:ok, %{id: cid, paid: paid}} <- Contract.bank_allowance(addr, device_addr) do
       state = Map.put(state, :device_addr, device_addr)
 
       # check promise
-      {:ok, %{id: cid, paid: paid}} = Contract.bank_allowance(addr, device_addr)
       remote_promise = check_remote_promise(promise, cid, addr, device_addr)
       local_promise = DevicePromise.get(device_addr)
       local_promise = check_local_promise(local_promise, cid, addr, device_addr)
