@@ -3,7 +3,7 @@ defmodule ARP.Service do
   Service supervisor
   """
 
-  alias ARP.API.JSONRPC2.{Account, Device, Nonce, Server}
+  alias ARP.API.JSONRPC2.{Account, App, Device, Nonce, Server}
   alias ARP.API.TCP.DeviceProtocol
   alias ARP.{CheckTask, Config, DeviceNetSpeed, DevicePool}
 
@@ -52,7 +52,7 @@ defmodule ARP.Service do
 
     # start jsonrpc service
     jsonrpc2_opts = [
-      modules: [Server, Device, Account, Nonce]
+      modules: [Server, Device, Account, Nonce, App]
     ]
 
     jsonrpc_spec =

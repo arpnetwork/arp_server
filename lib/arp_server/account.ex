@@ -3,9 +3,7 @@ defmodule ARP.Account do
   Manage server account
   """
 
-  alias JSONRPC2.Client.HTTP
-
-  alias ARP.API.JSONRPC2.Protocol
+  alias ARP.API.TCP.DeviceProtocol
 
   alias ARP.{
     Config,
@@ -15,7 +13,6 @@ defmodule ARP.Account do
     DappPool,
     DevicePool,
     DevicePromise,
-    Nonce,
     Promise,
     Utils
   }
@@ -43,9 +40,16 @@ defmodule ARP.Account do
 
       DevicePromise.set(device_addr, device_promise)
 
-      Task.start(fn ->
-        send_to_device(device_addr, device_promise)
-      end)
+      with {_, dev} <- DevicePool.get(device_addr) do
+        DeviceProtocol.send_device_promise(
+          dev.tcp_pid,
+          device_promise.cid |> Utils.encode_integer(),
+          device_promise.from,
+          device_promise.to,
+          device_promise.amount |> Utils.encode_integer(),
+          device_promise.sign
+        )
+      end
 
       :ok
     else
@@ -145,44 +149,5 @@ defmodule ARP.Account do
     device_amount = last_device_amount + increment
 
     Promise.create(private_key, device_cid, server_addr, device_addr, device_amount)
-  end
-
-  defp send_to_device(device_address, promise) do
-    promise_data = promise |> Promise.encode() |> Poison.encode!()
-
-    method = "account_pay"
-    sign_data = [promise_data]
-
-    {_pid, %{ip: ip, http_port: port}} = DevicePool.get(device_address)
-
-    case send_request(device_address, ip, port, method, sign_data) do
-      {:ok, _result} ->
-        :ok
-
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
-  defp send_request(device_address, ip, port, method, data) do
-    private_key = private_key()
-    address = address()
-
-    nonce = address |> Nonce.get_and_update_nonce(device_address) |> Utils.encode_integer()
-    url = "http://#{ip}:#{port}"
-
-    sign = Protocol.sign(method, data, nonce, device_address, private_key)
-
-    case HTTP.call(url, method, data ++ [nonce, sign]) do
-      {:ok, result} ->
-        if Protocol.verify_resp_sign(result, address, device_address) do
-          {:ok, result}
-        else
-          {:error, :verify_error}
-        end
-
-      {:error, err} ->
-        {:error, err}
-    end
   end
 end

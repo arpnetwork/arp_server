@@ -5,7 +5,6 @@ defmodule ARP.Device do
 
   alias ARP.{Account, Config, Contract, DevicePool, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
-  alias JSONRPC2.Client.HTTP
 
   use GenServer, restart: :temporary
 
@@ -21,10 +20,8 @@ defmodule ARP.Device do
     :tcp_pid,
     :price,
     :ip,
-    :port,
     :original_ip,
     :tcp_port,
-    :http_port,
     :dapp_address,
     :brand,
     :model,
@@ -51,12 +48,10 @@ defmodule ARP.Device do
     GenServer.start_link(__MODULE__, opts)
   end
 
-  def check_port(host, tcp_port, http_port) do
+  def check_port(host, tcp_port) do
     with {:ok, socket} <- :gen_tcp.connect(host, tcp_port, [active: false], 5000),
          {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
-         :gen_tcp.close(socket),
-         HTTP.call("http://#{host}:#{http_port}", "device_ping", []),
-         {:ok, _} <- HTTP.call("http://#{host}:#{http_port}", "device_ping", []) do
+         :gen_tcp.close(socket) do
       :ok
     else
       {{_, _}, socket} ->

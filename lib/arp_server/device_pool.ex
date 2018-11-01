@@ -187,7 +187,6 @@ defmodule ARP.DevicePool do
         address: dev.address,
         ip: dev.ip,
         tcp_port: dev.tcp_port,
-        http_port: dev.http_port,
         width: dev.width,
         height: dev.height
       }

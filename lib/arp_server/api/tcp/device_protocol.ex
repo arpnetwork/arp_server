@@ -33,6 +33,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_device_use_end_report 8
   @cmd_speed_notify 9
   @cmd_repeat_connect_offline_notify 10
+  @cmd_send_device_promise 11
+  @cmd_app_install 12
+  @cmd_app_uninstall 13
+  @cmd_app_start 14
 
   @cmd_result_success 0
   @cmd_result_ver_err -1
@@ -49,7 +53,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @speed_test_interval 200
   @min_upload_speed 524_288
 
-  @ver "1.1"
+  @ver "1.2"
   @compatible_ver [@ver]
 
   @doc false
@@ -93,6 +97,22 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   def repeat_connect_offline(pid, addr) do
     GenServer.call(pid, {:repeat_connect_offline, addr}, @speed_timeout)
+  end
+
+  def send_device_promise(pid, cid, from, to, amount, sign) do
+    GenServer.cast(pid, {:send_device_promise, cid, from, to, amount, sign})
+  end
+
+  def app_install(pid, package, url, filesize, md5) do
+    GenServer.cast(pid, {:app_install, package, url, filesize, md5})
+  end
+
+  def app_uninstall(pid, package) do
+    GenServer.cast(pid, {:app_uninstall, package})
+  end
+
+  def app_start(pid, package) do
+    GenServer.cast(pid, {:app_start, package})
   end
 
   @doc false
@@ -293,6 +313,61 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:stop, :normal, :ok, state}
   end
 
+  def handle_cast({:send_device_promise, cid, from, to, amount, sign}, %{socket: socket} = state) do
+    %{
+      id: @cmd_send_device_promise,
+      data: %{
+        cid: cid,
+        from: from,
+        to: to,
+        amount: amount,
+        sign: sign
+      }
+    }
+    |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:app_install, package, url, filesize, md5}, %{socket: socket} = state) do
+    %{
+      id: @cmd_app_install,
+      data: %{
+        package: package,
+        url: url,
+        filesize: filesize,
+        md5: md5
+      }
+    }
+    |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:app_uninstall, package}, %{socket: socket} = state) do
+    %{
+      id: @cmd_app_uninstall,
+      data: %{
+        package: package
+      }
+    }
+    |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:app_start, package}, %{socket: socket} = state) do
+    %{
+      id: @cmd_app_start,
+      data: %{
+        package: package
+      }
+    }
+    |> send_resp(socket)
+
+    {:noreply, state}
+  end
+
   # Device verify
   defp handle_command(@cmd_device_verify, data, socket, state) do
     salt = data[:salt]
@@ -348,8 +423,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp handle_command(@cmd_online, data, socket, state) do
     # compatible
     tcp_port = data[:tcp_port] || data[:port]
-    http_port = data[:http_port] || tcp_port + 1
-    data = data |> Map.put(:tcp_port, tcp_port) |> Map.put(:http_port, http_port)
+    data = data |> Map.put(:tcp_port, tcp_port)
 
     ver = data[:ver]
     device_addr = Map.get(state, :device_addr)
@@ -372,12 +446,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: ver err, device addr: #{device_addr}")
 
-      Enum.all?([data[:tcp_port], data[:http_port]], fn x -> x >= 0 && x <= 65_535 end) == false ->
+      !Enum.member?(0..65_535, data[:tcp_port]) ->
         online_resp(socket, @cmd_result_port_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
 
-      :error == Device.check_port(host |> to_charlist(), data[:tcp_port], data[:http_port]) ->
+      :error == Device.check_port(host |> to_charlist(), data[:tcp_port]) ->
         online_resp(socket, @cmd_result_port_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: check port err, device addr: #{device_addr}")

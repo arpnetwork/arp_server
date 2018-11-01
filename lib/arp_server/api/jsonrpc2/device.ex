@@ -34,11 +34,11 @@ defmodule ARP.API.JSONRPC2.Device do
     end
   end
 
-  def check_port(tcp_port, http_port) do
+  def check_port(tcp_port) do
     ip = Process.get(:remote_ip, {0, 0, 0, 0})
     ip = ip |> Tuple.to_list() |> Enum.join(".") |> to_charlist()
 
-    case Device.check_port(ip, tcp_port, http_port) do
+    case Device.check_port(ip, tcp_port) do
       :ok ->
         Protocol.response(%{})
 
