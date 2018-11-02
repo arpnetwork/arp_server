@@ -10,8 +10,6 @@ config :arp_server,
 config :ethereumex,
   url: "http://localhost:8545"
 
-config :os_mon,
-  start_cpu_sup: true,
-  start_disksup: false,
-  start_memsup: true,
-  start_os_sup: false
+config :logger, :console,
+  format: "$time [$level]$levelpad$metadata $message\n",
+  metadata: [:pid, :module, :function]
