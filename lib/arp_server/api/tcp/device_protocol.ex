@@ -41,10 +41,13 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_result_success 0
   @cmd_result_ver_err -1
   @cmd_result_verify_err -2
-  @cmd_result_port_err -3
+  # @cmd_result_port_err -3
   @cmd_result_max_load_err -4
   @cmd_result_speed_test_err -5
   @cmd_result_speed_test_low -6
+
+  @cmd_net_type_external 1
+  @cmd_net_type_internal 2
 
   @timeout 60_000
   @speed_timeout 60_000
@@ -421,14 +424,18 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   # Online request
   defp handle_command(@cmd_online, data, socket, state) do
-    # compatible
-    tcp_port = data[:tcp_port] || data[:port]
-    data = data |> Map.put(:tcp_port, tcp_port)
-
     ver = data[:ver]
     device_addr = Map.get(state, :device_addr)
     ip = get_ip(socket)
     host = data[:proxy] || ip
+
+    net_type =
+      case Device.check_port(host |> to_charlist(), data[:tcp_port]) do
+        :ok -> @cmd_net_type_external
+        _ -> @cmd_net_type_internal
+      end
+
+    data = data |> Map.put(:net_type, net_type)
 
     cond do
       DevicePool.size() >= Config.get(:max_load) ->
@@ -446,16 +453,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: ver err, device addr: #{device_addr}")
 
-      !Enum.member?(0..65_535, data[:tcp_port]) ->
-        online_resp(socket, @cmd_result_port_err)
-        Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
-
-      :error == Device.check_port(host |> to_charlist(), data[:tcp_port]) ->
-        online_resp(socket, @cmd_result_port_err)
-        Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        Logger.info("online faild, reason: check port err, device addr: #{device_addr}")
-
       true ->
         addr = Account.address()
 
@@ -472,7 +469,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
              :ok <- online(device) do
           DeviceNetSpeed.online(ip, device_addr, self())
 
-          online_resp(socket, @cmd_result_success)
+          online_resp(socket, @cmd_result_success, net_type)
 
           Logger.info("online success, device addr: #{device_addr}")
         else
@@ -530,6 +527,17 @@ defmodule ARP.API.TCP.DeviceProtocol do
     %{
       id: @cmd_online_resp,
       result: result
+    }
+    |> send_resp(socket)
+  end
+
+  defp online_resp(socket, result, net_type) do
+    %{
+      id: @cmd_online_resp,
+      result: result,
+      data: %{
+        net_type: net_type
+      }
     }
     |> send_resp(socket)
   end

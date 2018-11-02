@@ -39,6 +39,7 @@ defmodule ARP.Device do
     :telephony,
     :upload_speed,
     :download_speed,
+    :net_type,
     :ver,
     :cid,
     state: @pending
@@ -49,7 +50,8 @@ defmodule ARP.Device do
   end
 
   def check_port(host, tcp_port) do
-    with {:ok, socket} <- :gen_tcp.connect(host, tcp_port, [active: false], 5000),
+    with true <- Enum.member?(0..65_535, tcp_port),
+         {:ok, socket} <- :gen_tcp.connect(host, tcp_port, [active: false], 5000),
          {{:ok, data}, _} when data == [0, 0, 0, 0] <- {:gen_tcp.recv(socket, 4, 5000), socket},
          :gen_tcp.close(socket) do
       :ok
