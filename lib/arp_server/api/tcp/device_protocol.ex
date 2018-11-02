@@ -52,9 +52,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @timeout 60_000
   @speed_timeout 60_000
 
-  @speed_test_packet_len 2_621_440
-  @speed_test_interval 200
-  @min_upload_speed 524_288
+  @speed_test_packet_len 10_485_760
 
   @ver "1.2"
   @compatible_ver [@ver]
@@ -66,7 +64,15 @@ defmodule ARP.API.TCP.DeviceProtocol do
         %{
           ref: ref,
           socket: socket,
-          transport: transport
+          transport: transport,
+          speed_test: %{
+            dl_data_hash: nil,
+            dl_start_time: nil,
+            dl_end_time: nil,
+            ul_start_time: nil,
+            ul_receive_data_len: nil,
+            ul_end_time: nil
+          }
         }
       ])
 
@@ -83,12 +89,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc """
   Send download speed test msg to device
   """
-  def speed_test(pid) do
-    Process.send(pid, :speed_test, [])
+  def start_speed_test(pid) do
+    Process.send(pid, :start_speed_test, [])
   end
 
-  def speed_test_notify(pid) do
-    Process.send(pid, :speed_test_notify, [])
+  def speed_test_notify(pid, result) do
+    Process.send(pid, {:speed_test_notify, result}, [])
   end
 
   @doc """
@@ -123,7 +129,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     :ok = :ranch.accept_ack(ref)
     :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
 
-    Logger.info("socket connect." <> inspect(socket))
+    Logger.debug(fn -> "socket connect." <> inspect(socket) end)
 
     :gen_server.enter_loop(
       __MODULE__,
@@ -137,10 +143,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   def terminate(reason, %{socket: socket} = state) do
     device_addr = Map.get(state, :device_addr)
 
-    Logger.info(
+    Logger.debug(fn ->
       "socket disconnect." <>
         inspect(socket) <> " reason:" <> inspect(reason) <> ", device addr: #{device_addr}"
-    )
+    end)
 
     # Delete device info
     with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
@@ -154,9 +160,17 @@ defmodule ARP.API.TCP.DeviceProtocol do
   """
   def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     if byte_size(data) > 0 do
-      <<@protocol_type_data, data::binary>> = data
-      %{id: id} = req = Poison.decode!(data, keys: :atoms!)
-      state = handle_command(id, Map.get(req, :data), socket, state)
+      <<type::8, data::binary>> = data
+
+      state =
+        case type do
+          @protocol_type_data ->
+            %{id: id} = req = Poison.decode!(data, keys: :atoms!)
+            handle_command(id, Map.get(req, :data), socket, state)
+
+          @protocol_type_speed_test ->
+            handle_command(:speed_test, data, socket, state)
+        end
 
       {:noreply, state, @timeout}
     else
@@ -186,91 +200,36 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:stop, :normal, state}
   end
 
-  def handle_info(:speed_test, %{socket: socket, transport: transport} = state) do
-    :ok = transport.setopts(socket, active: false, packet: :raw)
+  def handle_info(:start_speed_test, %{socket: socket} = state) do
+    pad_data = :crypto.strong_rand_bytes(@speed_test_packet_len)
+    hash = :crypto.hash(:md5, pad_data) |> Base.encode16(case: :lower)
+    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
 
     # send download speed test data
-    pad_data = String.pad_trailing("a", @speed_test_packet_len, "a")
-    send_pad_data = gen_speed_test_data(pad_data)
+    send_speed_test_dl_tag(socket)
+    send_speed_test_dl_data(socket, pad_data)
+    send_speed_test_dl_tag(socket)
 
-    count = 4
-    dl_size = @speed_test_packet_len * count
-    calc_data = String.duplicate(pad_data, count)
-    calc_hash = :crypto.hash(:md5, calc_data) |> Base.encode16(case: :lower)
+    speed_test = %{
+      dl_data_hash: hash,
+      dl_start_time: now,
+      dl_end_time: nil,
+      ul_start_time: nil,
+      ul_receive_data_len: nil,
+      ul_end_time: nil
+    }
 
-    :ok = :ranch_tcp.send(socket, gen_speed_test_data())
-    dl_start_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-    speed_test_send_loop(socket, send_pad_data, count)
-    :ok = :ranch_tcp.send(socket, gen_speed_test_data())
-
-    # receive download speed test result
-    {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
-    {:ok, data} = :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @speed_timeout)
-    <<@protocol_type_data, data::binary>> = data
-    %{id: @cmd_dl_speed_report, data: %{hash: hash}} = Poison.decode!(data, keys: :atoms!)
-
-    if hash == calc_hash do
-      dl_end_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-      dl_speed = round(dl_size / (dl_end_time - dl_start_time) * 1000)
-
-      # upload speed test start
-      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
-
-      {:ok, <<@protocol_type_speed_test>>} =
-        :ranch_tcp.recv(socket, :binary.decode_unsigned(size), @speed_timeout)
-
-      start_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-
-      # receive upload speed test data
-      {:ok, size} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
-
-      {:ok, <<@protocol_type_speed_test>>} = :ranch_tcp.recv(socket, 1, @speed_timeout)
-
-      size = :binary.decode_unsigned(size) - 1
-      speed_test_recv_loop(socket, size)
-
-      # upload speed test end
-      {:ok, len} = :ranch_tcp.recv(socket, @protocol_packet, @speed_timeout)
-
-      {:ok, <<@protocol_type_speed_test>>} =
-        :ranch_tcp.recv(socket, :binary.decode_unsigned(len), @speed_timeout)
-
-      end_time = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-      ul_speed = round(size / (end_time - start_time) * 1000)
-
-      ip = get_ip(socket)
-      # set final speed
-      DeviceNetSpeed.set(ip, ul_speed, dl_speed)
-
-      :ok = transport.setopts(socket, active: true, packet: @protocol_packet)
-
-      if ul_speed >= @min_upload_speed do
-        speed_notify(socket, @cmd_result_success)
-      else
-        speed_notify(socket, @cmd_result_speed_test_low)
-        Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        device_addr = Map.get(state, :device_addr)
-        Logger.info("device offline, reason: speed test low, device addr: #{device_addr}")
-      end
-    else
-      speed_err_notify(socket)
-      Process.send_after(self(), {:tcp_closed, socket}, 5000)
-      device_addr = Map.get(state, :device_addr)
-      Logger.info("device offline, reason: speed test hash err, device addr: #{device_addr}")
-    end
-
-    {:noreply, state}
-  rescue
-    _err ->
-      speed_err_notify(socket)
-      Process.sleep(1000)
-      device_addr = Map.get(state, :device_addr)
-      Logger.info("device offline, reason: speed test err, device addr: #{device_addr}")
-      {:stop, :normal, state}
+    {:noreply, %{state | speed_test: speed_test}}
   end
 
-  def handle_info(:speed_test_notify, %{socket: socket} = state) do
-    speed_notify(socket, @cmd_result_success)
+  def handle_info({:speed_test_notify, result}, %{socket: socket, device_addr: address} = state) do
+    if result do
+      speed_notify(socket, @cmd_result_success)
+    else
+      speed_notify(socket, @cmd_result_speed_test_low)
+      Process.send_after(self(), {:tcp_closed, socket}, 1000)
+      Logger.debug(fn -> "device offline, reason: speed test low, device addr: #{address}" end)
+    end
 
     {:noreply, state}
   end
@@ -311,7 +270,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     }
     |> send_resp(socket)
 
-    Logger.info("device offline, reason: repeat connect, device addr: #{addr}")
+    Logger.debug(fn -> "device offline, reason: repeat connect, device addr: #{addr}" end)
 
     {:stop, :normal, :ok, state}
   end
@@ -482,6 +441,81 @@ defmodule ARP.API.TCP.DeviceProtocol do
     state
   end
 
+  # Check dl data hash
+  defp handle_command(@cmd_dl_speed_report, data, socket, %{speed_test: speed_test} = state) do
+    if !is_nil(data[:hash]) && data[:hash] == speed_test.dl_data_hash do
+      now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+      speed_test = %{speed_test | dl_end_time: now}
+      %{state | speed_test: speed_test}
+    else
+      speed_err_notify(socket)
+      Process.send_after(self(), {:tcp_closed, socket}, 1000)
+      device_addr = Map.get(state, :device_addr)
+
+      Logger.debug(fn ->
+        "device offline, reason: speed test hash err, device addr: #{device_addr}"
+      end)
+
+      state
+    end
+  end
+
+  # Receive speed test ul tag
+  defp handle_command(:speed_test, <<>>, socket, %{speed_test: speed_test} = state) do
+    cond do
+      is_nil(speed_test.dl_end_time) ->
+        speed_err_notify(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 1000)
+        device_addr = Map.get(state, :device_addr)
+
+        Logger.debug(fn ->
+          "device offline, reason: speed test tag err, device addr: #{device_addr}"
+        end)
+
+        state
+
+      is_nil(speed_test.ul_start_time) ->
+        now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+        speed_test = %{speed_test | ul_start_time: now}
+        %{state | speed_test: speed_test}
+
+      is_nil(speed_test.ul_end_time) && speed_test.ul_receive_data_len == @speed_test_packet_len ->
+        now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+        speed_test = %{speed_test | ul_end_time: now}
+
+        dl_speed =
+          round(
+            @speed_test_packet_len / (speed_test.dl_end_time - speed_test.dl_start_time) * 1000
+          )
+
+        ul_speed = round(@speed_test_packet_len / (now - speed_test.ul_start_time) * 1000)
+
+        ip = get_ip(socket)
+        # set final speed
+        Logger.debug(fn -> "net speed ul: #{ul_speed}, dl: #{dl_speed}, ip: #{ip}" end)
+        DeviceNetSpeed.set(ip, ul_speed, dl_speed, self())
+
+        %{state | speed_test: speed_test}
+
+      true ->
+        speed_err_notify(socket)
+        Process.send_after(self(), {:tcp_closed, socket}, 1000)
+        device_addr = Map.get(state, :device_addr)
+
+        Logger.debug(fn ->
+          "device offline, reason: speed test tag err, device addr: #{device_addr}"
+        end)
+
+        state
+    end
+  end
+
+  # Receive speed test data
+  defp handle_command(:speed_test, data, _socket, %{speed_test: speed_test} = state) do
+    speed_test = %{speed_test | ul_receive_data_len: byte_size(data)}
+    %{state | speed_test: speed_test}
+  end
+
   # Device use end report
   defp handle_command(@cmd_device_use_end_report, _data, _socket, state) do
     idle()
@@ -589,41 +623,20 @@ defmodule ARP.API.TCP.DeviceProtocol do
     :ranch_tcp.send(socket, resp)
   end
 
+  defp send_speed_test_dl_tag(socket) do
+    msg = <<@protocol_type_speed_test>>
+    :ranch_tcp.send(socket, msg)
+  end
+
+  defp send_speed_test_dl_data(socket, data) do
+    msg = <<@protocol_type_speed_test>> <> data
+    :ranch_tcp.send(socket, msg)
+  end
+
   # Get device ip
   defp get_ip(socket) do
     {:ok, {ip, _}} = :ranch_tcp.peername(socket)
     ip |> Tuple.to_list() |> Enum.join(".")
-  end
-
-  defp gen_speed_test_data(data \\ <<>>) do
-    protos = <<@protocol_type_speed_test>>
-    size = byte_size(protos) + byte_size(data)
-    [<<size::32>>, protos, data]
-  end
-
-  defp speed_test_send_loop(socket, pad_data, count) do
-    :ok = :ranch_tcp.send(socket, pad_data)
-    Process.sleep(@speed_test_interval)
-
-    if count > 1 do
-      speed_test_send_loop(socket, pad_data, count - 1)
-    end
-  end
-
-  defp speed_test_recv_loop(socket, size) do
-    cond do
-      size == 0 ->
-        nil
-
-      size >= @speed_test_packet_len ->
-        {:ok, data} = :ranch_tcp.recv(socket, @speed_test_packet_len, @speed_timeout)
-        Process.sleep(@speed_test_interval)
-        speed_test_recv_loop(socket, size - byte_size(data))
-
-      size < @speed_test_packet_len ->
-        {:ok, _data} = :ranch_tcp.recv(socket, size, @speed_timeout)
-        speed_test_recv_loop(socket, 0)
-    end
   end
 
   defp check_remote_promise(promise, cid, from, to) do
