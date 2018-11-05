@@ -81,7 +81,7 @@ defmodule ARP.DappPool do
             {:reply, err, state}
         end
 
-      {pid, _, _} ->
+      pid ->
         {:reply, {:ok, pid}, state}
     end
   end

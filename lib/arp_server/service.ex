@@ -13,10 +13,6 @@ defmodule ARP.Service do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def service_running do
-    GenServer.call(__MODULE__, :running)
-  end
-
   def start_service do
     GenServer.call(__MODULE__, :start_service)
   end
@@ -28,11 +24,6 @@ defmodule ARP.Service do
   def init(_arg) do
     {:ok, pid} = DynamicSupervisor.start_link(strategy: :one_for_one, name: :dynamic_services)
     {:ok, %{pid: pid}}
-  end
-
-  def handle_call(:running, _from, %{pid: pid} = state) do
-    %{specs: count} = DynamicSupervisor.count_children(pid)
-    {:reply, count > 0, state}
   end
 
   def handle_call(:start_service, _from, %{pid: pid} = state) do

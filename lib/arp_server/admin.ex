@@ -20,11 +20,16 @@ defmodule ARP.Admin do
 
   require Logger
 
+  @status_stopped 0
+  @status_starting 1
+  @status_registering 2
+  @status_running 3
+
   def init do
-    :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+    :ets.new(__MODULE__, [:named_table, :public, read_concurrency: true])
 
     secret = Base.encode16(:crypto.strong_rand_bytes(64))
-    :ets.insert(__MODULE__, {:secret, secret})
+    :ets.insert(__MODULE__, [{:secret, secret}, {:status, @status_stopped}])
   end
 
   def get_secret do
@@ -107,14 +112,14 @@ defmodule ARP.Admin do
 
   def status do
     %{
-      running: Service.service_running(),
+      status: get_status(),
       load: DevicePool.size()
     }
   end
 
   def start do
     cond do
-      Service.service_running() ->
+      get_status() != @status_stopped ->
         {:error, :service_already_started}
 
       nil == Account.private_key() ->
@@ -124,60 +129,72 @@ defmodule ARP.Admin do
         {:error, :missing_config}
 
       true ->
-        data_path = Config.get(:data_dir)
+        set_status(@status_starting)
 
-        unless File.exists?(data_path) do
-          File.mkdir_p!(data_path)
-        end
+        Task.start(fn ->
+          data_path = Config.get(:data_dir)
 
-        base_deposit = Config.get(:base_deposit)
-        config_ip = Config.get(:ip) |> Utils.ip_to_integer()
-        port = Config.get(:port)
-        deposit = Config.get(:deposit)
-        spender = Application.get_env(:arp_server, :registry_contract_address)
+          unless File.exists?(data_path) do
+            File.mkdir_p!(data_path)
+          end
 
-        private_key = Account.private_key()
-        addr = Account.address()
+          base_deposit = Config.get(:base_deposit)
+          config_ip = Config.get(:ip) |> Utils.ip_to_integer()
+          port = Config.get(:port)
+          deposit = Config.get(:deposit)
+          spender = Application.get_env(:arp_server, :registry_contract_address)
 
-        with {:ok, %{ip: ip}} when ip == 0 <- Contract.get_registered_info(addr),
-             Logger.info("registering..."),
-             :ok <- check_eth_balance(addr),
-             {:ok, add} <- check_arp_balance(addr, deposit),
-             {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
-             {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, add),
-             {:ok, %{"status" => "0x1"}} <-
-               Contract.bank_approve(private_key, spender, base_deposit, 0),
-             {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
-          Service.start_service()
-          DappPool.load_bound_dapp()
+          private_key = Account.private_key()
+          addr = Account.address()
 
-          Logger.info("arp server is running!")
-          :ok
-        else
-          {:ok, %{ip: ip}} when ip != 0 ->
+          with {:ok, %{ip: ip}} when ip == 0 <- Contract.get_registered_info(addr),
+               Logger.info("registering..."),
+               set_status(@status_registering),
+               :ok <- check_eth_balance(addr),
+               {:ok, add} <- check_arp_balance(addr, deposit),
+               {:ok, %{"status" => "0x1"}} <- Contract.approve(private_key, deposit),
+               {:ok, %{"status" => "0x1"}} <- Contract.bank_deposit(private_key, add),
+               {:ok, %{"status" => "0x1"}} <-
+                 Contract.bank_approve(private_key, spender, base_deposit, 0),
+               {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
             Service.start_service()
             DappPool.load_bound_dapp()
+            set_status(@status_running)
 
             Logger.info("arp server is running!")
             :ok
+          else
+            {:ok, %{ip: ip}} when ip != 0 ->
+              Service.start_service()
+              DappPool.load_bound_dapp()
+              set_status(@status_running)
 
-          {:ok, %{"status" => "0x0"}} ->
-            Logger.error("register failed!")
-            {:error, :register_failed}
+              Logger.info("arp server is running!")
+              :ok
 
-          {:error, e} ->
-            Logger.error(inspect(e))
-            :error
+            {:ok, %{"status" => "0x0"}} ->
+              Logger.error("register failed!")
+              {:error, :register_failed}
 
-          e ->
-            Logger.error(inspect(e))
-            :error
-        end
+            {:error, e} ->
+              Logger.error(inspect(e))
+              :error
+
+            e ->
+              Logger.error(inspect(e))
+              :error
+          end
+        end)
+
+        :ok
     end
   end
 
   def stop do
     Service.stop_service()
+    set_status(@status_stopped)
+    Logger.info("arp server stopped!")
+    :ok
   end
 
   def unregister do
@@ -350,6 +367,14 @@ defmodule ARP.Admin do
       _ ->
         {:error, :unknow_address}
     end
+  end
+
+  defp set_status(status) do
+    :ets.insert(__MODULE__, {:status, status})
+  end
+
+  defp get_status do
+    :ets.lookup_element(__MODULE__, :status, 2)
   end
 
   defp check_eth_balance(address) do
