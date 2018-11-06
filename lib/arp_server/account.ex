@@ -11,6 +11,7 @@ defmodule ARP.Account do
     Dapp,
     DappPool,
     Device,
+    DeviceBind,
     DevicePool,
     DevicePromise,
     Promise,
@@ -25,7 +26,7 @@ defmodule ARP.Account do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  def pay(dapp_addr, promise, increment, device_addr) do
+  def pay(dapp_addr, promise, increment, sub_addr) do
     self_addr = address()
     private_key = private_key()
 
@@ -34,11 +35,13 @@ defmodule ARP.Account do
          promise = Promise.decode(promise),
          dapp_pid when not is_nil(dapp_pid) <- DappPool.get(dapp_addr),
          :ok <- Dapp.save_promise(dapp_pid, promise, increment),
-         device_promise = calc_device_promise(increment, device_addr, self_addr, private_key),
-         true <- check_device_amount(device_addr, device_promise.amount) do
+         {:ok, device_addr} <- DeviceBind.get_device_addr(sub_addr),
+         device_promise =
+           calc_device_promise(increment, device_addr, sub_addr, self_addr, private_key),
+         true <- check_device_amount(sub_addr, device_promise.amount) do
       DevicePromise.set(device_addr, device_promise)
 
-      with {_, dev} <- DevicePool.get(device_addr) do
+      with {_, dev} <- DevicePool.get(sub_addr) do
         DeviceProtocol.send_device_promise(
           dev.tcp_pid,
           device_promise.cid |> Utils.encode_integer(),
@@ -120,8 +123,8 @@ defmodule ARP.Account do
     end
   end
 
-  defp check_device_amount(device_addr, amount) do
-    with {pid, _} <- DevicePool.get(device_addr),
+  defp check_device_amount(sub_addr, amount) do
+    with {pid, _} <- DevicePool.get(sub_addr),
          :ok <- Device.check_allowance(pid, amount) do
       true
     else
@@ -131,9 +134,9 @@ defmodule ARP.Account do
     end
   end
 
-  defp calc_device_promise(incremental_amount, device_addr, server_addr, private_key) do
+  defp calc_device_promise(incremental_amount, device_addr, sub_addr, server_addr, private_key) do
     # calc device amount and promise
-    {_pid, %{cid: device_cid}} = DevicePool.get(device_addr)
+    {_pid, %{cid: device_cid}} = DevicePool.get(sub_addr)
     device_promise = DevicePromise.get(device_addr)
 
     last_device_amount =

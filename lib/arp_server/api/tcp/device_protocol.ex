@@ -9,6 +9,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     Contract,
     Crypto,
     Device,
+    DeviceBind,
     DeviceNetSpeed,
     DevicePool,
     DevicePromise,
@@ -141,10 +142,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @doc false
   def terminate(reason, %{socket: socket} = state) do
     device_addr = Map.get(state, :device_addr)
+    sub_addr = Map.get(state, :sub_addr)
 
     Logger.debug(fn ->
       "socket disconnect." <>
-        inspect(socket) <> " reason:" <> inspect(reason) <> ", device addr: #{device_addr}"
+        inspect(socket) <>
+        " reason:" <> inspect(reason) <> ", device addr: #{device_addr}, sub_addr: #{sub_addr}"
     end)
 
     # Delete device info
@@ -343,7 +346,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     private_key = Account.private_key()
     addr = Account.address()
 
-    with {:ok, device_addr} <- Crypto.eth_recover(salt, sign),
+    with {:ok, sub_addr} <- Crypto.eth_recover(salt, sign),
+         {:ok, device_addr} <- DeviceBind.get_device_addr(sub_addr),
          {:ok, %{server: ^addr}} <- Contract.get_device_bind_info(device_addr),
          {:ok, %{id: cid, paid: paid}} <- Contract.bank_allowance(addr, device_addr) do
       state = Map.put(state, :device_addr, device_addr)
@@ -389,6 +393,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     device_addr = Map.get(state, :device_addr)
     ip = get_ip(socket)
     host = data[:proxy] || ip
+    sub_addr = data[:address]
+    state = Map.put(state, :sub_addr, sub_addr)
 
     net_type =
       case Device.check_port(host |> to_charlist(), data[:tcp_port]) do
@@ -402,17 +408,33 @@ defmodule ARP.API.TCP.DeviceProtocol do
       DevicePool.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        Logger.info("online faild, reason: max load err, device addr: #{device_addr}")
+
+        Logger.info(
+          "online faild, reason: max load err, device addr: #{device_addr}, sub_addr: #{sub_addr}"
+        )
 
       !device_addr ->
         online_resp(socket, @cmd_result_verify_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        Logger.info("online faild, reason: device verify err")
+        Logger.info("online faild, reason: device verify err, device addr: #{device_addr}")
+
+      !DeviceBind.is_bind?(device_addr, sub_addr) ->
+        online_resp(socket, @cmd_result_verify_err)
+        Process.send_after(self(), {:tcp_closed, socket}, 5000)
+
+        Logger.info(
+          "online faild, reason: device sub_addr bind err, device addr: #{device_addr}, sub_addr: #{
+            sub_addr
+          }"
+        )
 
       !Enum.member?(@compatible_ver, ver) ->
         online_resp(socket, @cmd_result_ver_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
-        Logger.info("online faild, reason: ver err, device addr: #{device_addr}")
+
+        Logger.info(
+          "online faild, reason: ver err, device addr: #{device_addr}, sub_addr: #{sub_addr}"
+        )
 
       true ->
         addr = Account.address()
@@ -421,23 +443,28 @@ defmodule ARP.API.TCP.DeviceProtocol do
              device = struct(ARP.Device, data),
              device =
                struct(device, %{
-                 address: device_addr,
+                 device_address: device_addr,
                  tcp_pid: self(),
                  ip: host,
                  original_ip: ip,
                  cid: id
                }),
              :ok <- online(device) do
-          DeviceNetSpeed.online(ip, device_addr, self())
+          DeviceNetSpeed.online(ip, sub_addr, self())
 
           online_resp(socket, @cmd_result_success, net_type)
 
-          Logger.info("online success, device addr: #{device_addr}")
+          Logger.info("online success, device addr: #{device_addr}, sub_addr: #{sub_addr}")
         else
           _ ->
             online_resp(socket, @cmd_result_verify_err)
             Process.send_after(self(), {:tcp_closed, socket}, 5000)
-            Logger.info("online faild, reason: online err, device addr: #{device_addr}")
+
+            Logger.info(
+              "online faild, reason: online err, device addr: #{device_addr}, sub_addr: #{
+                sub_addr
+              }"
+            )
         end
     end
 
@@ -454,9 +481,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
       speed_err_notify(socket)
       Process.send_after(self(), {:tcp_closed, socket}, 1000)
       device_addr = Map.get(state, :device_addr)
+      sub_addr = Map.get(state, :sub_addr)
 
       Logger.debug(fn ->
-        "device offline, reason: speed test hash err, device addr: #{device_addr}"
+        "device offline, reason: speed test hash err, device addr: #{device_addr}, sub_addr: #{
+          sub_addr
+        }"
       end)
 
       state
@@ -470,9 +500,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
         speed_err_notify(socket)
         Process.send_after(self(), {:tcp_closed, socket}, 1000)
         device_addr = Map.get(state, :device_addr)
+        sub_addr = Map.get(state, :sub_addr)
 
         Logger.debug(fn ->
-          "device offline, reason: speed test tag err, device addr: #{device_addr}"
+          "device offline, reason: speed test tag err, device addr: #{device_addr}, sub_addr: #{
+            sub_addr
+          }"
         end)
 
         state
@@ -504,9 +537,12 @@ defmodule ARP.API.TCP.DeviceProtocol do
         speed_err_notify(socket)
         Process.send_after(self(), {:tcp_closed, socket}, 1000)
         device_addr = Map.get(state, :device_addr)
+        sub_addr = Map.get(state, :sub_addr)
 
         Logger.debug(fn ->
-          "device offline, reason: speed test tag err, device addr: #{device_addr}"
+          "device offline, reason: speed test tag err, device addr: #{device_addr}, sub_addr: #{
+            sub_addr
+          }"
         end)
 
         state

@@ -18,6 +18,7 @@ defmodule ARP.Device do
   @check_interval 1000 * 60 * 10
 
   defstruct [
+    :device_address,
     :address,
     :tcp_pid,
     :price,
@@ -142,12 +143,18 @@ defmodule ARP.Device do
     dev = opts[:device]
     server_addr = Account.address()
 
-    with {:ok, allowance} <- Contract.bank_allowance(server_addr, dev.address),
+    with {:ok, allowance} <- Contract.bank_allowance(server_addr, dev.device_address),
          true <- allowance.id > 0,
          true <- allowance.expired == 0 do
       Process.send_after(self(), :check, @check_interval)
 
-      {:ok, %{address: dev.address, allowance: allowance, increasing: false}}
+      {:ok,
+       %{
+         device_address: dev.device_address,
+         address: dev.address,
+         allowance: allowance,
+         increasing: false
+       }}
     else
       _ ->
         {:stop, :normal}
@@ -197,7 +204,7 @@ defmodule ARP.Device do
   def handle_call(
         {:check_allowance, amount},
         _from,
-        %{address: address, allowance: allowance, increasing: increasing} = state
+        %{device_address: device_address, allowance: allowance, increasing: increasing} = state
       ) do
     approval_amount = Config.get(:device_deposit)
     limit_amount = approval_amount * 0.5
@@ -207,11 +214,11 @@ defmodule ARP.Device do
         {:reply, :error, state}
 
       !increasing && allowance.amount - amount < limit_amount ->
-        increase_approval(address, approval_amount, allowance.expired)
+        increase_approval(device_address, approval_amount, allowance.expired)
 
         Logger.info(
           "device allowance less than #{limit_amount / 1.0e18} ARP, increasing. address: #{
-            address
+            device_address
           }"
         )
 
@@ -236,14 +243,14 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_info(:check, %{address: address} = state) do
+  def handle_info(:check, %{device_address: device_address} = state) do
     server_addr = Account.address()
 
-    with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, address),
-         promise <- DevicePromise.get(address),
+    with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, device_address),
+         promise <- DevicePromise.get(device_address),
          true <- id == 0 || (!is_nil(promise) && promise.cid != id) do
-      DevicePromise.delete(address)
-      Logger.info("device unbound. address: #{address}")
+      DevicePromise.delete(device_address)
+      Logger.info("device unbound. address: #{device_address}")
       {:stop, :normal, state}
     else
       _ ->
