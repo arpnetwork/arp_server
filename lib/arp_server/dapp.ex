@@ -15,7 +15,7 @@ defmodule ARP.Dapp do
   @dying 1
   @out_of_allowance 2
 
-  defstruct [:address, :ip, :port, :allowance, state: @normal]
+  defstruct [:address, :ip, :port, :allowance, balance: 0, state: @normal]
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -45,25 +45,12 @@ defmodule ARP.Dapp do
     end
   end
 
-  def save_promise(pid, promise, increment, tries \\ 0)
-
-  def save_promise(pid, promise, increment, tries) when tries < 10 do
+  def save_promise(pid, promise, increment) do
     if pid && Process.alive?(pid) do
-      case GenServer.call(pid, {:save_promise, promise, increment}) do
-        :await ->
-          Process.sleep(100)
-          save_promise(pid, promise, increment, tries + 1)
-
-        res ->
-          res
-      end
+      GenServer.call(pid, {:save_promise, promise, increment})
     else
       {:error, :invalid_dapp}
     end
-  end
-
-  def save_promise(_pid, _promise, _increment, _tries) do
-    {:error, :lost_promise}
   end
 
   def device_offline(pid, device_addr) do
@@ -133,24 +120,30 @@ defmodule ARP.Dapp do
       @normal ->
         last_promise = DappPromise.get(dapp.address)
 
-        case check_promise(last_promise, promise, increment, dapp.allowance) do
+        case check_promise(last_promise, promise, increment, dapp.allowance, dapp.balance) do
           :ok ->
             DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
+            balance = promise.amount - last_promise.amount - increment + dapp.balance
 
             if promise.amount == dapp.allowance.amount do
               do_cash(promise)
-              {:reply, :ok, struct(dapp, state: @out_of_allowance)}
+              {:reply, :ok, struct(dapp, balance: balance, state: @out_of_allowance)}
             else
-              {:reply, :ok, dapp}
+              {:reply, :ok, struct(dapp, balance: balance)}
             end
 
-          :wait ->
-            {:reply, :wait, dapp}
+          :skip ->
+            balance = dapp.balance - increment
+            {:reply, :ok, struct(dapp, balance: balance)}
 
           :out_of_allowance ->
             {:reply, {:error, :out_of_allowance}, dapp}
 
           :invalid_promise ->
+            Logger.debug(fn ->
+              inspect({last_promise, promise, increment, dapp.allowance, dapp.balance})
+            end)
+
             {:reply, {:error, :invalid_promise}, dapp}
         end
 
@@ -294,7 +287,7 @@ defmodule ARP.Dapp do
     end
   end
 
-  defp check_promise(last_promise, promise, increment, allowance) do
+  defp check_promise(last_promise, promise, increment, allowance, balance) do
     cond do
       promise.amount > allowance.amount ->
         :out_of_allowance
@@ -306,11 +299,11 @@ defmodule ARP.Dapp do
       last_promise.cid != promise.cid ->
         :invalid_promise
 
-      promise.amount - last_promise.amount == increment ->
+      promise.amount - last_promise.amount >= increment ->
         :ok
 
-      promise.amount - last_promise.amount > increment ->
-        :wait
+      promise.amount < last_promise.amount && increment <= balance ->
+        :skip
 
       true ->
         :invalid_promise

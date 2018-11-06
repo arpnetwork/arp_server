@@ -125,7 +125,8 @@ defmodule ARP.Account do
          :ok <- Device.check_allowance(pid, amount) do
       true
     else
-      _ ->
+      e ->
+        Logger.debug(fn -> inspect(e) end, label: "check device amount")
         false
     end
   end

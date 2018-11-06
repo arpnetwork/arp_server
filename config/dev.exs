@@ -11,5 +11,5 @@ config :ethereumex,
   url: "http://localhost:8545"
 
 config :logger, :console,
-  format: "$time [$level]$levelpad$metadata $message\n",
+  format: "\n$time [$level] $levelpad$metadata $message\n",
   metadata: [:pid, :module, :function]

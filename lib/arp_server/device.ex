@@ -200,14 +200,21 @@ defmodule ARP.Device do
         %{address: address, allowance: allowance, increasing: increasing} = state
       ) do
     approval_amount = Config.get(:device_deposit)
+    limit_amount = approval_amount * 0.5
 
     cond do
       allowance.amount < amount ->
         {:reply, :error, state}
 
-      !increasing && allowance.amount - amount < approval_amount ->
+      !increasing && allowance.amount - amount < limit_amount ->
         increase_approval(address, approval_amount, allowance.expired)
-        Logger.info("device allowance less than 100 ARP, increasing. address: #{address}")
+
+        Logger.info(
+          "device allowance less than #{limit_amount / 1.0e18} ARP, increasing. address: #{
+            address
+          }"
+        )
+
         {:reply, :ok, %{state | increasing: true}}
 
       true ->
@@ -245,7 +252,8 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_info({_ref, :increase_result, allowance}, state) do
+  def handle_info({_ref, {:increase_result, allowance}}, state) do
+    Logger.debug(fn -> inspect(allowance) end, label: "increase result update allowance")
     {:noreply, %{state | allowance: allowance, increasing: false}}
   end
 
@@ -263,7 +271,7 @@ defmodule ARP.Device do
         Logger.info("increase allowance success. address: #{address}")
       end
 
-      new_allowance = Contract.bank_allowance(server_addr, address)
+      {:ok, new_allowance} = Contract.bank_allowance(server_addr, address)
 
       {:increase_result, new_allowance}
     end)
