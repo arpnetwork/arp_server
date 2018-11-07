@@ -50,7 +50,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_net_type_internal 2
 
   @timeout 60_000
-  @speed_timeout 60_000
 
   @speed_test_packet_len 10_485_760
 
@@ -105,7 +104,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   end
 
   def repeat_connect_offline(pid, addr) do
-    GenServer.call(pid, {:repeat_connect_offline, addr}, @speed_timeout)
+    GenServer.call(pid, {:repeat_connect_offline, addr}, @timeout)
   end
 
   def send_device_promise(pid, cid, from, to, amount, sign) do
@@ -206,20 +205,24 @@ defmodule ARP.API.TCP.DeviceProtocol do
     now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
 
     # send download speed test data
-    send_speed_test_dl_tag(socket)
-    send_speed_test_dl_data(socket, pad_data)
-    send_speed_test_dl_tag(socket)
+    with :ok <- send_speed_test_dl_tag(socket),
+         :ok <- send_speed_test_dl_data(socket, pad_data),
+         :ok <- send_speed_test_dl_tag(socket) do
+      speed_test = %{
+        dl_data_hash: hash,
+        dl_start_time: now,
+        dl_end_time: nil,
+        ul_start_time: nil,
+        ul_receive_data_len: nil,
+        ul_end_time: nil
+      }
 
-    speed_test = %{
-      dl_data_hash: hash,
-      dl_start_time: now,
-      dl_end_time: nil,
-      ul_start_time: nil,
-      ul_receive_data_len: nil,
-      ul_end_time: nil
-    }
-
-    {:noreply, %{state | speed_test: speed_test}}
+      {:noreply, %{state | speed_test: speed_test}}
+    else
+      _ ->
+        speed_err_notify(socket)
+        {:noreply, state}
+    end
   end
 
   def handle_info({:speed_test_notify, result}, %{socket: socket, device_addr: address} = state) do
@@ -493,7 +496,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         ip = get_ip(socket)
         # set final speed
         Logger.debug(fn -> "net speed ul: #{ul_speed}, dl: #{dl_speed}, ip: #{ip}" end)
-        DeviceNetSpeed.set(ip, ul_speed, dl_speed, self())
+        DeviceNetSpeed.set(ip, ul_speed, dl_speed)
 
         %{state | speed_test: speed_test}
 

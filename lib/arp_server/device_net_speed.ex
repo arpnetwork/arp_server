@@ -11,6 +11,7 @@ defmodule ARP.DeviceNetSpeed do
 
   @interval 60_000
   @speed_timeout 86_400
+  @speed_test_timeout 50_000
   @min_upload_speed 524_288
 
   def start_link(_opts) do
@@ -34,8 +35,8 @@ defmodule ARP.DeviceNetSpeed do
   @doc """
   Set net speed after test.
   """
-  def set(ip, up, down, tcp_pid) when up > 0 and down > 0 do
-    GenServer.cast(__MODULE__, {:set, ip, up, down, tcp_pid})
+  def set(ip, up, down) when up > 0 and down > 0 do
+    GenServer.cast(__MODULE__, {:set, ip, up, down})
   end
 
   @doc """
@@ -49,7 +50,7 @@ defmodule ARP.DeviceNetSpeed do
   The state value is:
   %{
     timeout: %{"ip" => 1531881682, ...},
-    testing: %{"ip" => "device_id", ...},
+    testing: %{"ip" => {"device_id", tcp_pid, timer}, ...},
     queue: [{"ip", "device_id", tcp_pid}, ...],
     "ip": %{
       upload_speed: 0,
@@ -79,12 +80,6 @@ defmodule ARP.DeviceNetSpeed do
   def handle_cast({:offline, ip, device_id}, %{testing: testing, queue: queue} = state) do
     new_state =
       cond do
-        Map.has_key?(testing, ip) ->
-          # is testing
-          new_testing = Map.delete(testing, ip)
-          state = %{state | testing: new_testing}
-          start_next(state)
-
         Enum.any?(queue, fn {q_ip, q_device_id, _} -> q_ip == ip && q_device_id == device_id end) ->
           # is in queue
           index =
@@ -95,6 +90,13 @@ defmodule ARP.DeviceNetSpeed do
           new_queue = List.delete_at(queue, index)
 
           %{state | queue: new_queue}
+
+        Map.has_key?(testing, ip) ->
+          # is testing
+          {{_, _, timer}, new_testing} = Map.pop(testing, ip, nil)
+          Process.cancel_timer(timer)
+          state = %{state | testing: new_testing}
+          start_next(state)
 
         Map.has_key?(state, ip) ->
           # has tested
@@ -118,22 +120,28 @@ defmodule ARP.DeviceNetSpeed do
     {:noreply, new_state}
   end
 
-  def handle_cast({:set, ip, up, down, tcp_pid}, state) do
-    {device_id, testing} = Map.pop(state[:testing], ip, nil)
-    state = %{state | testing: testing}
-
+  def handle_cast({:set, ip, up, down}, state) do
     new_state =
-      if up >= @min_upload_speed do
-        # speed is ok
-        device_ids = [device_id]
-        update_device(device_ids, up, down)
-        DeviceProtocol.speed_test_notify(tcp_pid, true)
-        new_data = %{upload_speed: up, download_speed: down, device_ids: device_ids}
-        Map.put(state, ip, new_data)
-      else
-        # speed is too slow
-        DeviceProtocol.speed_test_notify(tcp_pid, false)
-        state
+      case Map.pop(state[:testing], ip, nil) do
+        {{device_id, tcp_pid, timer}, testing} ->
+          Process.cancel_timer(timer)
+          state = %{state | testing: testing}
+
+          if up >= @min_upload_speed do
+            # speed is ok
+            device_ids = [device_id]
+            update_device(device_ids, up, down)
+            DeviceProtocol.speed_test_notify(tcp_pid, true)
+            new_data = %{upload_speed: up, download_speed: down, device_ids: device_ids}
+            Map.put(state, ip, new_data)
+          else
+            # speed is too slow
+            DeviceProtocol.speed_test_notify(tcp_pid, false)
+            state
+          end
+
+        _ ->
+          state
       end
 
     {:noreply, start_next(new_state)}
@@ -169,6 +177,24 @@ defmodule ARP.DeviceNetSpeed do
     {:noreply, new_state}
   end
 
+  @doc """
+  Speed test timeout
+  """
+  def handle_info({:speed_test_timeout, ip}, state) do
+    new_state =
+      case Map.pop(state[:testing], ip, nil) do
+        {{device_id, tcp_pid, _timer}, new_testing} ->
+          Logger.info("speed test timeout. ip = #{ip}, address = #{device_id}")
+          DeviceProtocol.speed_test_notify(tcp_pid, false)
+          %{state | testing: new_testing}
+
+        _ ->
+          state
+      end
+
+    {:noreply, start_next(new_state)}
+  end
+
   defp max_testing_device do
     bandwidth = Config.get(:bandwidth)
     bandwidth |> div(100) |> max(1)
@@ -202,7 +228,8 @@ defmodule ARP.DeviceNetSpeed do
             # notify ARP.API.TCP.DeviceProtocol to start test speed
             DeviceProtocol.start_speed_test(tcp_pid)
 
-            new_testing = Map.put(state[:testing], ip, device_id)
+            timer = Process.send_after(self(), {:speed_test_timeout, ip}, @speed_test_timeout)
+            new_testing = Map.put(state[:testing], ip, {device_id, tcp_pid, timer})
             {_, new_queue} = List.pop_at(state[:queue], 0)
 
             state
