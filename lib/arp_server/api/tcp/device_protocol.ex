@@ -38,6 +38,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   @cmd_app_install 12
   @cmd_app_uninstall 13
   @cmd_app_start 14
+  @cmd_app_start_done_report 15
 
   @cmd_result_success 0
   @cmd_result_ver_err -1
@@ -121,7 +122,22 @@ defmodule ARP.API.TCP.DeviceProtocol do
   end
 
   def app_start(pid, package) do
-    GenServer.cast(pid, {:app_start, package})
+    GenServer.call(pid, {:app_start, package})
+  end
+
+  def get_app_start(pid, package) do
+    GenServer.call(pid, {:get_app_start, package})
+  end
+
+  def check_app_start(pid, package) do
+    case get_app_start(pid, package) do
+      true ->
+        :ok
+
+      false ->
+        Process.sleep(200)
+        check_app_start(pid, package)
+    end
   end
 
   @doc false
@@ -281,6 +297,30 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:stop, :normal, :ok, state}
   end
 
+  def handle_call({:app_start, package}, _from, %{socket: socket} = state) do
+    %{
+      id: @cmd_app_start,
+      data: %{
+        package: package
+      }
+    }
+    |> send_resp(socket)
+
+    state = Map.put(state, :app_start, :starting)
+
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:get_app_start, _package}, _from, state) do
+    case state[:app_start] do
+      :done ->
+        {:reply, true, state}
+
+      _ ->
+        {:reply, false, state}
+    end
+  end
+
   def handle_cast({:send_device_promise, cid, from, to, amount, sign}, %{socket: socket} = state) do
     %{
       id: @cmd_send_device_promise,
@@ -315,18 +355,6 @@ defmodule ARP.API.TCP.DeviceProtocol do
   def handle_cast({:app_uninstall, package}, %{socket: socket} = state) do
     %{
       id: @cmd_app_uninstall,
-      data: %{
-        package: package
-      }
-    }
-    |> send_resp(socket)
-
-    {:noreply, state}
-  end
-
-  def handle_cast({:app_start, package}, %{socket: socket} = state) do
-    %{
-      id: @cmd_app_start,
       data: %{
         package: package
       }
@@ -559,6 +587,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
   defp handle_command(@cmd_device_use_end_report, _data, _socket, state) do
     idle()
     state
+  end
+
+  defp handle_command(@cmd_app_start_done_report, _data, _socket, state) do
+    Map.put(state, :app_start, :done)
   end
 
   defp online(:ok) do

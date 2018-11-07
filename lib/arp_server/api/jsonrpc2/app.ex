@@ -49,6 +49,7 @@ defmodule ARP.API.JSONRPC2.App do
     with {:ok, dapp_addr} <- Protocol.verify(method(), [device_addr, package], nonce, sign, addr),
          {_, %{tcp_pid: tcp_pid, dapp_address: ^dapp_addr}} <- DevicePool.get(device_addr) do
       DeviceProtocol.app_start(tcp_pid, package)
+      DeviceProtocol.check_app_start(tcp_pid, package)
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
       err ->
