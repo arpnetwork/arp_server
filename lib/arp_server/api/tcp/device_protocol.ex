@@ -170,6 +170,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
       DeviceNetSpeed.offline(dev.original_ip, dev.address)
       DevicePool.offline(dev.address)
+      DeviceBind.update_expired(dev.device_address, dev.address)
     end
   end
 

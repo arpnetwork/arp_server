@@ -3,9 +3,14 @@ defmodule ARP.DeviceBind do
 
   use GenServer
 
+  alias ARP.DevicePool
+
   @device_bind_path Application.get_env(:arp_server, :data_dir)
                     |> Path.join("device_bind")
                     |> String.to_charlist()
+
+  @expired_time 60 * 60 * 24 * 7
+  @check_interval 1000 * 60 * 10
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -27,15 +32,19 @@ defmodule ARP.DeviceBind do
     ms = [{{:"$1", :"$2"}, [is_list: :"$2"], [{{:"$1", :"$2"}}]}]
     list = :ets.select(__MODULE__, ms)
 
-    case Enum.find(list, fn {_device_addr, sub_list} -> Enum.member?(sub_list, sub_addr) end) do
-      {device_addr, _sub_list} -> {:ok, device_addr}
+    with {device_addr, _sub_list} <-
+           Enum.find(list, fn {_device_addr, sub_list} ->
+             sub_list |> Enum.map(fn {addr, _expired} -> addr end) |> Enum.member?(sub_addr)
+           end) do
+      {:ok, device_addr}
+    else
       _ -> {:error, :not_found}
     end
   end
 
   def is_bind?(device_addr, sub_addr) do
     with list when list != false <- get(device_addr) do
-      Enum.member?(list, sub_addr)
+      list |> Enum.map(fn {addr, _expired} -> addr end) |> Enum.member?(sub_addr)
     else
       _ ->
         false
@@ -47,8 +56,11 @@ defmodule ARP.DeviceBind do
       :ets.insert_new(__MODULE__, {device_addr, []})
     end
 
+    expired = calc_expired()
+
+    add_list = Enum.map(sub_addr_list, fn x -> {x, expired} end)
     list = get(device_addr)
-    new_list = sub_addr_list ++ list
+    new_list = add_list ++ list
     :ets.insert(__MODULE__, {device_addr, new_list})
     GenServer.cast(__MODULE__, :write)
     :ok
@@ -56,9 +68,36 @@ defmodule ARP.DeviceBind do
 
   def delete_all_and_add_sub_device(device_addr, sub_addr_list) do
     :ets.delete(__MODULE__, device_addr)
-    :ets.insert(__MODULE__, {device_addr, sub_addr_list})
+
+    expired = calc_expired()
+
+    add_list = Enum.map(sub_addr_list, fn x -> {x, expired} end)
+
+    :ets.insert(__MODULE__, {device_addr, add_list})
     GenServer.cast(__MODULE__, :write)
     :ok
+  end
+
+  def update_expired(device_addr, sub_addr) do
+    with list when list != false <- get(device_addr) do
+      new_expired = calc_expired()
+
+      new_list =
+        Enum.map(list, fn {addr, expired} ->
+          if addr == sub_addr do
+            {addr, new_expired}
+          else
+            {addr, expired}
+          end
+        end)
+
+      :ets.insert(__MODULE__, {device_addr, new_list})
+      GenServer.cast(__MODULE__, :write)
+      :ok
+    else
+      _ ->
+        {:error, :not_found}
+    end
   end
 
   # Callbacks
@@ -73,11 +112,46 @@ defmodule ARP.DeviceBind do
           :ets.new(__MODULE__, [:named_table, :public, read_concurrency: true])
       end
 
+    Process.send_after(self(), :check_expired, 10_000)
+
     {:ok, %{tab: tab}}
   end
 
   def handle_cast(:write, %{tab: tab} = state) do
     :ets.tab2file(tab, @device_bind_path, extended_info: [:md5sum])
     {:noreply, state}
+  end
+
+  def handle_info(:check_expired, state) do
+    now = DateTime.utc_now() |> DateTime.to_unix()
+    list = get_all()
+
+    new_list =
+      Enum.map(list, fn {device_addr, sub_list} ->
+        new_sub_list =
+          Enum.filter(sub_list, fn {sub_addr, expired} ->
+            now < expired || (now >= expired && DevicePool.get(sub_addr) != nil)
+          end)
+
+        {device_addr, new_sub_list}
+      end)
+
+    :ets.insert(__MODULE__, new_list)
+
+    del_list =
+      new_list
+      |> Enum.filter(fn {_device_addr, sub_list} -> sub_list == [] end)
+      |> Enum.map(fn {device_addr, _sub_list} -> device_addr end)
+
+    Enum.each(del_list, fn device_addr -> :ets.delete(__MODULE__, device_addr) end)
+    GenServer.cast(__MODULE__, :write)
+
+    Process.send_after(self(), :check_expired, @check_interval)
+    {:noreply, state}
+  end
+
+  defp calc_expired do
+    now = DateTime.utc_now() |> DateTime.to_unix()
+    now + @expired_time
   end
 end
