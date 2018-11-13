@@ -11,6 +11,7 @@ defmodule ARP.Admin do
     Dapp,
     DappPool,
     DappPromise,
+    DeviceBind,
     DevicePool,
     DevicePromise,
     Promise,
@@ -274,7 +275,19 @@ defmodule ARP.Admin do
         # all bound devices.
         with address when not is_nil(address) <- Account.address(),
              {:ok, devices} <- Contract.get_bound_device(address) do
-          list = Enum.map(devices, fn addr -> %{address: addr} end)
+          bind_list = DeviceBind.get_all()
+
+          device_list =
+            Enum.reduce(bind_list, [], fn {device_addr, sub_list}, acc ->
+              if Enum.member?(devices, device_addr) do
+                sub_addr_list = Enum.map(sub_list, fn {sub_addr, _} -> sub_addr end)
+                sub_addr_list ++ acc
+              else
+                acc
+              end
+            end)
+
+          list = Enum.map(device_list, fn addr -> %{address: addr} end)
           {:ok, list}
         else
           nil ->
@@ -298,7 +311,7 @@ defmodule ARP.Admin do
   def device_detail(address) do
     case ARP.DevicePool.get(address) do
       {_, dev} ->
-        promise = ARP.DevicePromise.get(address)
+        promise = ARP.DevicePromise.get(dev.device_address)
         p = Map.from_struct(promise)
         data = dev |> Map.from_struct() |> Map.delete(:tcp_pid) |> Map.put(:promise, p)
         {:ok, data}
