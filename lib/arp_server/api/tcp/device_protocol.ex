@@ -55,7 +55,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   @speed_test_packet_len 10_485_760
 
-  @ver "1.2"
+  @ver "1.3"
   @compatible_ver [@ver]
 
   @doc false

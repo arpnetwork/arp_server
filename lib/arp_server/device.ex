@@ -5,7 +5,7 @@ defmodule ARP.Device do
 
   require Logger
 
-  alias ARP.{Account, Config, Contract, DevicePool, DevicePromise}
+  alias ARP.{Account, Contract, DevicePool, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
 
   use GenServer, restart: :temporary
@@ -129,14 +129,6 @@ defmodule ARP.Device do
     end
   end
 
-  def check_allowance(pid, amount) do
-    if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:check_allowance, amount})
-    else
-      {:error, :invalid_pid}
-    end
-  end
-
   ## Callbacks
 
   def init(opts) do
@@ -201,34 +193,6 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_call(
-        {:check_allowance, amount},
-        _from,
-        %{device_address: device_address, allowance: allowance, increasing: increasing} = state
-      ) do
-    approval_amount = Config.get(:device_deposit)
-    limit_amount = approval_amount * 0.5
-
-    cond do
-      allowance.amount < amount ->
-        {:reply, :error, state}
-
-      !increasing && allowance.amount - amount < limit_amount ->
-        increase_approval(device_address, approval_amount, allowance.expired)
-
-        Logger.info(
-          "device allowance less than #{limit_amount / 1.0e18} ARP, increasing. address: #{
-            device_address
-          }"
-        )
-
-        {:reply, :ok, %{state | increasing: true}}
-
-      true ->
-        {:reply, :ok, state}
-    end
-  end
-
   def handle_cast({:release, address, dapp_address}, state) do
     with {_pid, dev} <- DevicePool.get(address),
          ^dapp_address <- dev.dapp_address,
@@ -259,28 +223,7 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_info({_ref, {:increase_result, allowance}}, state) do
-    Logger.debug(fn -> inspect(allowance) end, label: "increase result update allowance")
-    {:noreply, %{state | allowance: allowance, increasing: false}}
-  end
-
   def handle_info(_, state) do
     {:noreply, state}
-  end
-
-  defp increase_approval(address, amount, expired) do
-    Task.async(fn ->
-      server_addr = Account.address()
-      private_key = Account.private_key()
-
-      with {:ok, %{"status" => "0x1"}} <-
-             Contract.bank_increase_approval(private_key, address, amount, expired) do
-        Logger.info("increase allowance success. address: #{address}")
-      end
-
-      {:ok, new_allowance} = Contract.bank_allowance(server_addr, address)
-
-      {:increase_result, new_allowance}
-    end)
   end
 end

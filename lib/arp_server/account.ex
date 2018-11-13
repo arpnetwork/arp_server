@@ -7,10 +7,10 @@ defmodule ARP.Account do
 
   alias ARP.{
     Config,
+    Contract,
     Crypto,
     Dapp,
     DappPool,
-    Device,
     DeviceBind,
     DevicePool,
     DevicePromise,
@@ -38,7 +38,7 @@ defmodule ARP.Account do
          {:ok, device_addr} <- DeviceBind.get_device_addr(sub_addr),
          device_promise =
            calc_device_promise(increment, device_addr, sub_addr, self_addr, private_key),
-         true <- check_device_amount(sub_addr, device_promise.amount) do
+         true <- check_device_amount(device_addr, device_promise.amount) do
       DevicePromise.set(device_addr, device_promise)
 
       with {_, dev} <- DevicePool.get(sub_addr) do
@@ -95,11 +95,27 @@ defmodule ARP.Account do
     end
   end
 
+  def set_allowance(device_addr) do
+    GenServer.call(__MODULE__, {:set_allowance, device_addr})
+  end
+
+  def del_allowance(device_addr) do
+    GenServer.call(__MODULE__, {:del_allowance, device_addr})
+  end
+
+  def check_allowance(device_addr, amount) do
+    GenServer.call(__MODULE__, {:check_allowance, device_addr, amount})
+  end
+
+  def get_allowance do
+    GenServer.call(__MODULE__, :get_allowance)
+  end
+
   # Callbacks
 
   def init(_opts) do
     :ets.new(__MODULE__, [:named_table, read_concurrency: true])
-    {:ok, []}
+    {:ok, %{}}
   end
 
   def handle_call({:set_key, keystore, auth}, _from, state) do
@@ -123,9 +139,91 @@ defmodule ARP.Account do
     end
   end
 
-  defp check_device_amount(sub_addr, amount) do
-    with {pid, _} <- DevicePool.get(sub_addr),
-         :ok <- Device.check_allowance(pid, amount) do
+  def handle_call(:get_allowance, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_call({:set_allowance, device_addr}, _from, state) do
+    server_addr = address()
+
+    if state[device_addr] do
+      {:reply, :ok, state}
+    else
+      with {:ok, allowance} <- Contract.bank_allowance(server_addr, device_addr),
+           true <- allowance.id > 0,
+           true <- allowance.expired == 0 do
+        new_state = Map.put(state, device_addr, %{allowance: allowance, increasing: false})
+        {:reply, :ok, new_state}
+      else
+        _ ->
+          {:reply, {:error, :allowance_err}, state}
+      end
+    end
+  end
+
+  def handle_call({:del_allowance, device_addr}, _from, state) do
+    state =
+      case DevicePool.get_device_size(device_addr) do
+        0 ->
+          Map.delete(state, device_addr)
+
+        _ ->
+          state
+      end
+
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:check_allowance, device_addr, amount}, _from, state) do
+    if state[device_addr] do
+      info = state[device_addr]
+      allowance = info.allowance
+      increasing = info.increasing
+
+      size = DevicePool.get_device_size(device_addr)
+      approval_amount = Config.get(:device_deposit) * size
+      limit_amount = approval_amount * 0.5
+
+      cond do
+        allowance.amount < amount ->
+          {:reply, :error, state}
+
+        !increasing && allowance.amount - amount < limit_amount ->
+          increase_approval(device_addr, approval_amount, allowance.expired)
+
+          Logger.info(
+            "device allowance less than #{limit_amount / 1.0e18} ARP, increasing. address: #{
+              device_addr
+            }"
+          )
+
+          info = %{info | increasing: true}
+          new_state = Map.put(state, device_addr, info)
+
+          {:reply, :ok, new_state}
+
+        true ->
+          {:reply, :ok, state}
+      end
+    else
+      {:reply, :error, state}
+    end
+  end
+
+  def handle_info({_ref, {:increase_result, device_addr, allowance}}, state) do
+    Logger.debug(fn -> "increase result update allowance: " <> inspect(allowance) end)
+    info = state[device_addr]
+    info = %{info | allowance: allowance, increasing: false}
+    new_state = Map.put(state, device_addr, info)
+    {:noreply, new_state}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  defp check_device_amount(device_addr, amount) do
+    with :ok <- check_allowance(device_addr, amount) do
       true
     else
       e ->
@@ -151,5 +249,21 @@ defmodule ARP.Account do
     device_amount = last_device_amount + increment
 
     Promise.create(private_key, device_cid, server_addr, device_addr, device_amount)
+  end
+
+  defp increase_approval(device_addr, amount, expired) do
+    Task.async(fn ->
+      server_addr = address()
+      private_key = private_key()
+
+      with {:ok, %{"status" => "0x1"}} <-
+             Contract.bank_increase_approval(private_key, device_addr, amount, expired) do
+        Logger.info("increase allowance success. device_addr: #{device_addr}")
+      end
+
+      {:ok, new_allowance} = Contract.bank_allowance(server_addr, device_addr)
+
+      {:increase_result, device_addr, new_allowance}
+    end)
   end
 end

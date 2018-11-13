@@ -2,7 +2,7 @@ defmodule ARP.DevicePool do
   @moduledoc false
 
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.{DappPool, Device, Utils}
+  alias ARP.{Account, DappPool, Device, Utils}
 
   use GenServer
 
@@ -46,6 +46,17 @@ defmodule ARP.DevicePool do
 
   def size do
     :ets.info(__MODULE__, :size)
+  end
+
+  def get_device_size(device_addr) do
+    # :ets.fun2ms(fn {addr, pid, dev} when :erlang.map_get(:device_address, dev) == device_addr -> addr end)
+    match = [
+      {{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :device_address, :"$3"}, {:const, device_addr}}],
+       [:"$1"]}
+    ]
+
+    list = :ets.select(__MODULE__, match)
+    Enum.count(list)
   end
 
   def update(address, device) do
@@ -150,7 +161,8 @@ defmodule ARP.DevicePool do
     addr = device.address
 
     with false <- :ets.member(__MODULE__, addr),
-         {:ok, ref} <- create(device) do
+         {:ok, ref} <- create(device),
+         :ok <- Account.set_allowance(device.device_address) do
       refs = Map.put(refs, ref, addr)
       {:reply, :ok, Map.put(state, :refs, refs)}
     else
@@ -166,9 +178,10 @@ defmodule ARP.DevicePool do
   end
 
   def handle_call({:offline, address}, _from, state) do
-    with {pid, _dev} <- get(address) do
+    with {pid, dev} <- get(address) do
       :ets.delete(__MODULE__, address)
       GenServer.stop(pid)
+      Account.del_allowance(dev.device_address)
       {:reply, :ok, state}
     else
       _ ->
