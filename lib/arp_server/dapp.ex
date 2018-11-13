@@ -355,8 +355,23 @@ defmodule ARP.Dapp do
           {:error, :verify_error}
         end
 
+      {:error, %{message: "Nonce too low"}} ->
+        nonce = get_nonce(ip, port) + 1
+        Nonce.check_and_update_nonce(address, dapp_address, nonce)
+        send_request(dapp_address, ip, port, method, data)
+
       {:error, err} ->
         {:error, err}
+    end
+  end
+
+  defp get_nonce(ip, port) do
+    case HTTP.call("http://#{ip}:#{port}", "nonce_get", [Account.address()]) do
+      {:ok, result} ->
+        Utils.decode_hex(result["nonce"])
+
+      {:error, _} ->
+        0
     end
   end
 end

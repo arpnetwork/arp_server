@@ -580,7 +580,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   # Receive speed test data
   defp handle_command(:speed_test, data, _socket, %{speed_test: speed_test} = state) do
-    speed_test = %{speed_test | ul_receive_data_len: byte_size(data)}
+    data_len = speed_test.ul_receive_data_len || 0
+    speed_test = %{speed_test | ul_receive_data_len: data_len + byte_size(data)}
     %{state | speed_test: speed_test}
   end
 

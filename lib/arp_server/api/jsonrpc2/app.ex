@@ -23,8 +23,8 @@ defmodule ARP.API.JSONRPC2.App do
       DeviceProtocol.app_install(tcp_pid, package, url, filesize, md5)
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
-      err ->
-        Protocol.response(err)
+      _ ->
+        Protocol.response(:error)
     end
   end
 
@@ -37,8 +37,8 @@ defmodule ARP.API.JSONRPC2.App do
       DeviceProtocol.app_uninstall(tcp_pid, package)
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
-      err ->
-        Protocol.response(err)
+      _ ->
+        Protocol.response(:error)
     end
   end
 
@@ -52,8 +52,8 @@ defmodule ARP.API.JSONRPC2.App do
       DeviceProtocol.check_app_start(tcp_pid, package)
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
-      err ->
-        Protocol.response(err)
+      _ ->
+        Protocol.response(:error)
     end
   end
 end
