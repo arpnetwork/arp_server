@@ -4,6 +4,7 @@ defmodule ARP.DeviceBind do
   use GenServer
 
   alias ARP.DevicePool
+  alias ARP.API.TCP.DeviceProtocol
 
   @device_bind_path Application.get_env(:arp_server, :data_dir)
                     |> Path.join("device_bind")
@@ -67,6 +68,15 @@ defmodule ARP.DeviceBind do
   end
 
   def delete_all_and_add_sub_device(device_addr, sub_addr_list) do
+    current_list = get(device_addr)
+
+    if current_list != false do
+      Enum.each(current_list, fn {sub_addr, _} ->
+        {_pid, dev} = DevicePool.get(sub_addr)
+        DeviceProtocol.repeat_connect_offline(dev.tcp_pid, sub_addr)
+      end)
+    end
+
     :ets.delete(__MODULE__, device_addr)
 
     expired = calc_expired()

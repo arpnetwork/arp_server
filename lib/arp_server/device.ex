@@ -5,7 +5,7 @@ defmodule ARP.Device do
 
   require Logger
 
-  alias ARP.{Account, Contract, DevicePool, DevicePromise}
+  alias ARP.{Account, Contract, DevicePool, DeviceBind, DevicePromise}
   alias ARP.API.TCP.DeviceProtocol
 
   use GenServer, restart: :temporary
@@ -126,6 +126,44 @@ defmodule ARP.Device do
       GenServer.call(pid, {:allocating, dapp_address, dapp_price})
     else
       {:error, :invalid_pid}
+    end
+  end
+
+  def check_device_allowance(device_addr, type, sub_addr_len) do
+    with {:ok, approve_info} <- Contract.bank_allowance(device_addr),
+         {:ok, device_hold} <- Contract.get_device_holding() do
+      case type do
+        1 ->
+          if approve_info.amount >= device_hold * sub_addr_len do
+            :ok
+          else
+            {:error, :device_allowance_low}
+          end
+
+        2 ->
+          bind_len =
+            case DeviceBind.get(device_addr) do
+              false ->
+                0
+
+              list ->
+                length(list)
+            end
+
+          len = bind_len + sub_addr_len
+
+          if approve_info.amount >= device_hold * len do
+            :ok
+          else
+            {:error, :device_allowance_low}
+          end
+
+        _ ->
+          {:error, :bind_type_err}
+      end
+    else
+      _ ->
+        {:error, :device_allowance_low}
     end
   end
 
