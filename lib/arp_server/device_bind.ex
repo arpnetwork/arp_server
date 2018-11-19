@@ -72,8 +72,10 @@ defmodule ARP.DeviceBind do
 
     if current_list != false do
       Enum.each(current_list, fn {sub_addr, _} ->
-        {_pid, dev} = DevicePool.get(sub_addr)
-        DeviceProtocol.repeat_connect_offline(dev.tcp_pid, sub_addr)
+        case DevicePool.get(sub_addr) do
+          {_pid, dev} -> DeviceProtocol.repeat_connect_offline(dev.tcp_pid, sub_addr)
+          _ -> nil
+        end
       end)
     end
 
