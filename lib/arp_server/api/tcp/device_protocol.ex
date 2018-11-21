@@ -726,7 +726,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   defp check_local_promise(local_promise, cid, from, to) do
     if local_promise && local_promise.cid > 0 && cid == local_promise.cid &&
-         Promise.verify(local_promise, from, to) do
+         Promise.verify(Promise.encode(local_promise), from, to) do
       local_promise
     else
       nil
