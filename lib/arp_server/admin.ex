@@ -312,7 +312,12 @@ defmodule ARP.Admin do
     case ARP.DevicePool.get(address) do
       {_, dev} ->
         promise = ARP.DevicePromise.get(dev.device_address)
-        p = Map.from_struct(promise)
+
+        p =
+          if promise do
+            Map.from_struct(promise)
+          end
+
         data = dev |> Map.from_struct() |> Map.delete(:tcp_pid) |> Map.put(:promise, p)
         {:ok, data}
 
