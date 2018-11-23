@@ -20,7 +20,28 @@ defmodule ARP.API.JSONRPC2.App do
              addr
            ),
          {_, %{tcp_pid: tcp_pid, dapp_address: ^dapp_addr}} <- DevicePool.get(device_addr) do
-      DeviceProtocol.app_install(tcp_pid, package, url, filesize, md5)
+      DeviceProtocol.app_install(tcp_pid, 0, package, url, filesize, md5)
+      Protocol.response(%{}, nonce, dapp_addr, private_key)
+    else
+      _ ->
+        Protocol.response(:error)
+    end
+  end
+
+  def install(device_addr, mode, package, url, filesize, md5, nonce, sign) do
+    private_key = Account.private_key()
+    addr = Account.address()
+
+    with {:ok, dapp_addr} <-
+           Protocol.verify(
+             method(),
+             [device_addr, mode, package, url, filesize, md5],
+             nonce,
+             sign,
+             addr
+           ),
+         {_, %{tcp_pid: tcp_pid, dapp_address: ^dapp_addr}} <- DevicePool.get(device_addr) do
+      DeviceProtocol.app_install(tcp_pid, mode, package, url, filesize, md5)
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
       _ ->

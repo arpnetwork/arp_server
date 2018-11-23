@@ -50,7 +50,7 @@ defmodule ARP.Server do
            amount: amount |> Utils.encode_integer(),
            signExpired: sign_expired,
            expired: expired,
-           promiseSign: "0x" <> promise_sign
+           promiseSign: promise_sign
          }}
       else
         :error

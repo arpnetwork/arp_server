@@ -201,7 +201,9 @@ defmodule ARP.DevicePool do
         ip: dev.ip,
         tcp_port: dev.tcp_port,
         width: dev.width,
-        height: dev.height
+        height: dev.height,
+        bpk: dev.features.bpk,
+        landscape: dev.features.landscape
       }
 
       {:reply, dev_info, state}

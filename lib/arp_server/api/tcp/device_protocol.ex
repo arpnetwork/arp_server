@@ -55,8 +55,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   @speed_test_packet_len 10_485_760
 
-  @ver "1.3"
-  @compatible_ver [@ver]
+  @ver "1.4"
+  @compatible_ver [@ver, "1.3"]
 
   @doc false
   def start_link(ref, socket, transport, _opts \\ []) do
@@ -113,8 +113,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
     GenServer.cast(pid, {:send_device_promise, cid, from, to, amount, sign})
   end
 
-  def app_install(pid, package, url, filesize, md5) do
-    GenServer.cast(pid, {:app_install, package, url, filesize, md5})
+  def app_install(pid, mode, package, url, filesize, md5) do
+    GenServer.cast(pid, {:app_install, mode, package, url, filesize, md5})
   end
 
   def app_uninstall(pid, package) do
@@ -338,10 +338,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
     {:noreply, state}
   end
 
-  def handle_cast({:app_install, package, url, filesize, md5}, %{socket: socket} = state) do
+  def handle_cast({:app_install, mode, package, url, filesize, md5}, %{socket: socket} = state) do
     %{
       id: @cmd_app_install,
       data: %{
+        mode: mode,
         package: package,
         url: url,
         filesize: filesize,
@@ -468,6 +469,24 @@ defmodule ARP.API.TCP.DeviceProtocol do
       true ->
         addr = Account.address()
 
+        features = data[:features]
+
+        bpk =
+          with true <- is_list(features),
+               true <- Enum.member?(features, "bpk") do
+            1
+          else
+            _ -> 0
+          end
+
+        landscape =
+          with true <- is_list(features),
+               true <- Enum.member?(features, "landscape") do
+            1
+          else
+            _ -> 0
+          end
+
         with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
              device = struct(ARP.Device, data),
              device =
@@ -476,7 +495,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
                  tcp_pid: self(),
                  ip: host,
                  original_ip: ip,
-                 cid: id
+                 cid: id,
+                 features: %{bpk: bpk, landscape: landscape}
                }),
              :ok <- online(device) do
           DeviceNetSpeed.online(ip, sub_addr, self())

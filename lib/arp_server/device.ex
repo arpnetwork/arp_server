@@ -46,6 +46,7 @@ defmodule ARP.Device do
     :net_type,
     :ver,
     :cid,
+    :features,
     state: @pending
   ]
 
