@@ -213,9 +213,14 @@ defmodule ARP.Account do
   def handle_info({_ref, {:increase_result, device_addr, allowance}}, state) do
     Logger.debug(fn -> "increase result update allowance: " <> inspect(allowance) end)
     info = state[device_addr]
-    info = %{info | allowance: allowance, increasing: false}
-    new_state = Map.put(state, device_addr, info)
-    {:noreply, new_state}
+
+    if info do
+      info = %{info | allowance: allowance, increasing: false}
+      new_state = Map.put(state, device_addr, info)
+      {:noreply, new_state}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info(_msg, state) do

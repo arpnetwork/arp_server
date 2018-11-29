@@ -181,7 +181,11 @@ defmodule ARP.DevicePool do
     with {pid, dev} <- get(address) do
       :ets.delete(__MODULE__, address)
       GenServer.stop(pid)
-      Account.del_allowance(dev.device_address)
+      # check device_address sub_addr num
+      if get_device_size(dev.device_address) == 0 do
+        Account.del_allowance(dev.device_address)
+      end
+
       {:reply, :ok, state}
     else
       _ ->
