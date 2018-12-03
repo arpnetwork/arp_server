@@ -122,8 +122,14 @@ defmodule ARP.Dapp do
 
         case check_promise(last_promise, promise, increment, dapp.allowance, dapp.balance) do
           :ok ->
-            DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
-            balance = promise.amount - last_promise.amount - increment + dapp.balance
+            balance =
+              if last_promise do
+                DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
+                promise.amount - last_promise.amount - increment + dapp.balance
+              else
+                DappPromise.set(dapp.address, struct(promise, paid: 0))
+                promise.amount - increment + dapp.balance
+              end
 
             if promise.amount == dapp.allowance.amount do
               do_cash(promise)
