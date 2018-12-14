@@ -58,17 +58,16 @@ defmodule ARP.DeviceBind do
     end
 
     expired = calc_expired()
-
     list = get(device_addr)
-    current_sub_list = Enum.map(list, fn {sub_addr, _} -> sub_addr end)
+    add_list = Enum.map(sub_addr_list, fn x -> {x, expired} end)
 
-    add_sub_list =
-      sub_addr_list
-      |> Enum.uniq()
-      |> Enum.filter(fn sub -> !Enum.member?(current_sub_list, sub) end)
+    new_list =
+      if list == false do
+        add_list
+      else
+        add_list ++ list
+      end
 
-    add_list = Enum.map(add_sub_list, fn x -> {x, expired} end)
-    new_list = add_list ++ list
     :ets.insert(__MODULE__, {device_addr, new_list})
     GenServer.cast(__MODULE__, :write)
     :ok
@@ -90,7 +89,7 @@ defmodule ARP.DeviceBind do
 
     expired = calc_expired()
 
-    add_list = sub_addr_list |> Enum.uniq() |> Enum.map(fn x -> {x, expired} end)
+    add_list = sub_addr_list |> Enum.map(fn x -> {x, expired} end)
 
     :ets.insert(__MODULE__, {device_addr, add_list})
     GenServer.cast(__MODULE__, :write)
@@ -116,6 +115,25 @@ defmodule ARP.DeviceBind do
     else
       _ ->
         {:error, :not_found}
+    end
+  end
+
+  def uniq_list(device_addr, addr_sign_list, type) do
+    list = addr_sign_list |> Enum.map(fn item -> item["sub_addr"] end) |> Enum.uniq()
+
+    if type == 1 do
+      list
+    else
+      current_list = get(device_addr)
+
+      current_sub_list =
+        if current_list == false do
+          []
+        else
+          Enum.map(current_list, fn {sub_addr, _} -> sub_addr end)
+        end
+
+      list |> Enum.filter(fn sub -> !Enum.member?(current_sub_list, sub) end)
     end
   end
 

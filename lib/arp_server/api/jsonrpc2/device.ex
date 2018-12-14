@@ -54,7 +54,6 @@ defmodule ARP.API.JSONRPC2.Device do
     with {:ok, ^device_addr} <-
            Protocol.verify(method(), [device_addr, type, sub_addr_list], nonce, sign, addr),
          {:ok, addr_sign_list} <- Poison.decode(sub_addr_list),
-         :ok <- Device.check_device_allowance(device_addr, type, length(addr_sign_list)),
          true <-
            Enum.all?(addr_sign_list, fn item ->
              {:ok, decode_sub_addr} = Crypto.eth_recover(item["salt"], item["sub_sign"])
@@ -64,9 +63,9 @@ defmodule ARP.API.JSONRPC2.Device do
              else
                false
              end
-           end) do
-      list = Enum.map(addr_sign_list, fn item -> item["sub_addr"] end)
-
+           end),
+         list = DeviceBind.uniq_list(device_addr, addr_sign_list, type),
+         :ok <- Device.check_device_allowance(device_addr, type, length(list)) do
       case type do
         1 ->
           DeviceBind.delete_all_and_add_sub_device(device_addr, list)
