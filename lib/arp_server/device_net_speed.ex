@@ -256,6 +256,7 @@ defmodule ARP.DeviceNetSpeed do
 
           %{state | queue: new_queue}
           |> Map.put(ip, %{data | device_ids: device_ids})
+          |> start_next()
 
         true ->
           # speed is too slow
@@ -269,6 +270,7 @@ defmodule ARP.DeviceNetSpeed do
           {_, new_queue} = List.pop_at(state[:queue], 0)
 
           %{state | queue: new_queue}
+          |> start_next()
       end
     else
       state
