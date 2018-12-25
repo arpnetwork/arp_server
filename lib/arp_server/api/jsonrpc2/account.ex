@@ -1,7 +1,7 @@
 defmodule ARP.API.JSONRPC2.Account do
   @moduledoc false
 
-  use JSONRPC2.Server.Handler
+  use JSONRPC2.Server.Module
 
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, DappPromise, Promise, Utils}
@@ -10,8 +10,10 @@ defmodule ARP.API.JSONRPC2.Account do
     private_key = Account.private_key()
     addr = Account.address()
 
+    method = Protocol.get_method(__MODULE__, :pay, 5)
+
     with {:ok, dapp_addr} <-
-           Protocol.verify(method(), [promise, amount, device_addr], nonce, sign, addr),
+           Protocol.verify(method, [promise, amount, device_addr], nonce, sign, addr),
          :ok <- Account.pay(dapp_addr, promise, Utils.decode_hex(amount), device_addr) do
       Protocol.response(%{}, nonce, dapp_addr, private_key)
     else
@@ -25,7 +27,9 @@ defmodule ARP.API.JSONRPC2.Account do
     private_key = Account.private_key()
     addr = Account.address()
 
-    with {:ok, dapp_addr} <- Protocol.verify(method(), [cid], sign, addr) do
+    method = Protocol.get_method(__MODULE__, :last, 2)
+
+    with {:ok, dapp_addr} <- Protocol.verify(method, [cid], sign, addr) do
       promise = DappPromise.get(dapp_addr)
 
       if promise == nil || promise.cid != decode_cid do

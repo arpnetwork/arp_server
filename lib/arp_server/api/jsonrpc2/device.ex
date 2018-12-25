@@ -1,7 +1,7 @@
 defmodule ARP.API.JSONRPC2.Device do
   @moduledoc false
 
-  use JSONRPC2.Server.Handler
+  use JSONRPC2.Server.Module
 
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, Crypto, Device, DeviceBind, DevicePool, Utils}
@@ -12,7 +12,9 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
-    with {:ok, dapp_address} <- Protocol.verify(method(), [price, ip, port], nonce, sign, addr),
+    method = Protocol.get_method(__MODULE__, :request, 5)
+
+    with {:ok, dapp_address} <- Protocol.verify(method, [price, ip, port], nonce, sign, addr),
          dev when is_map(dev) <- DevicePool.request(dapp_address, decoded_price, ip, port) do
       Protocol.response(dev, nonce, dapp_address, private_key)
     else
@@ -25,7 +27,9 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
-    with {:ok, dapp_address} <- Protocol.verify(method(), [address], nonce, sign, addr) do
+    method = Protocol.get_method(__MODULE__, :release, 3)
+
+    with {:ok, dapp_address} <- Protocol.verify(method, [address], nonce, sign, addr) do
       DevicePool.release(address, dapp_address)
       Protocol.response(%{}, nonce, dapp_address, private_key)
     else
@@ -51,8 +55,10 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
+    method = Protocol.get_method(__MODULE__, :bind, 5)
+
     with {:ok, ^device_addr} <-
-           Protocol.verify(method(), [device_addr, type, sub_addr_list], nonce, sign, addr),
+           Protocol.verify(method, [device_addr, type, sub_addr_list], nonce, sign, addr),
          {:ok, addr_sign_list} <- Poison.decode(sub_addr_list),
          true <-
            Enum.all?(addr_sign_list, fn item ->

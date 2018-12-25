@@ -17,7 +17,7 @@ defmodule ARP.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :ethereumex, :cowboy, :plug, :hackney],
+      extra_applications: [:logger, :ethereumex, :plug_cowboy, :hackney],
       mod: {ARP.Application, []}
     ]
   end
@@ -26,8 +26,7 @@ defmodule ARP.MixProject do
     [
       {:ranch, "~> 1.5"},
       {:poison, "~> 3.1"},
-      {:cowboy, "~> 2.4"},
-      {:plug, "~> 1.6"},
+      {:plug_cowboy, "~> 2.0"},
       {:jsonrpc2, git: "https://github.com/arpnetwork/jsonrpc2_ex.git"},
       {:hackney, "~> 1.13"},
       {:elixir_uuid, "~> 1.2"},
@@ -36,7 +35,7 @@ defmodule ARP.MixProject do
        ref: "e940555514061ece8f08cc773eecb1b5f5d9d0cf",
        manager: :rebar,
        override: true},
-      {:ethereumex, "~> 0.3.2"},
+      {:ethereumex, "~> 0.5.1"},
       {:abi, "~> 0.1.8"},
       {:blockchain, "~> 0.1.7"},
       {:keccakf1600, "~> 2.0", hex: :keccakf1600_orig},

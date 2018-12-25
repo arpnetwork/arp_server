@@ -42,12 +42,10 @@ defmodule ARP.Service do
       )
 
     # start jsonrpc service
-    jsonrpc2_opts = [
-      modules: [Server, Device, Account, Nonce, App]
-    ]
+    jsonrpc2_opts = {JSONRPC2.Server.ModuleHandler, [Server, Device, Account, Nonce, App]}
 
     jsonrpc_spec =
-      Plug.Adapters.Cowboy2.child_spec(
+      Plug.Cowboy.child_spec(
         scheme: :http,
         plug: {JSONRPC2.Server.Plug, jsonrpc2_opts},
         options: [port: jsonrpc_port]

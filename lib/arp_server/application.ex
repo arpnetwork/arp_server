@@ -18,7 +18,7 @@ defmodule ARP.Application do
       ARP.DevicePromise,
       ARP.Service,
       ARP.DeviceBind,
-      Plug.Adapters.Cowboy2.child_spec(
+      Plug.Cowboy.child_spec(
         scheme: :http,
         plug: ARP.API.HTTP.Router,
         options: [

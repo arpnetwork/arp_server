@@ -1,7 +1,7 @@
 defmodule ARP.API.JSONRPC2.Server do
   @moduledoc false
 
-  use JSONRPC2.Server.Handler
+  use JSONRPC2.Server.Module
 
   alias ARP.API.JSONRPC2.Protocol
   alias ARP.{Account, Server}

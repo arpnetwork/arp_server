@@ -2,6 +2,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
   @moduledoc false
 
   alias ARP.{Crypto, Nonce, Utils}
+  alias JSONRPC2.Misc
 
   def verify(method, params, nonce, sign, self_addr) do
     decoded_nonce = Utils.decode_hex(nonce)
@@ -57,15 +58,19 @@ defmodule ARP.API.JSONRPC2.Protocol do
 
   def response({:error, msg}) do
     new_msg =
-      if is_atom(msg) do
-        msg |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
+      unless is_atom(msg) do
+        msg |> String.downcase() |> String.replace(" ", "_") |> String.to_atom()
       end
 
-    {:invalid_params, new_msg || msg}
+    {:error, new_msg || msg}
   end
 
   def response(:error) do
-    :invalid_params
+    {:error, :invalid_params}
+  end
+
+  def response(nil) do
+    {:error, :invalid_params}
   end
 
   def response(data) do
@@ -81,6 +86,23 @@ defmodule ARP.API.JSONRPC2.Protocol do
   def response(data, to_addr, private_key) when is_map(data) do
     data_sign = data |> encode_sign_msg(to_addr) |> Crypto.eth_sign(private_key)
     {:ok, Map.put(data, :sign, data_sign)}
+  end
+
+  def get_method(module, fun_name, arity) do
+    fun = Function.capture(module, fun_name, arity)
+    info = Function.info(fun)
+
+    module =
+      info
+      |> Keyword.get(:module)
+      |> Atom.to_string()
+      |> String.split(".", [])
+      |> List.last()
+      |> String.downcase()
+      |> String.to_atom()
+
+    name = Keyword.get(info, :name)
+    Misc.to_method_name(module, name)
   end
 
   # Encode params for JSONRPC2 request sign.
