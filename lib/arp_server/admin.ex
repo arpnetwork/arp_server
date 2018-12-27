@@ -133,12 +133,6 @@ defmodule ARP.Admin do
         set_status(@status_starting)
 
         Task.start(fn ->
-          data_path = Config.get(:data_dir)
-
-          unless File.exists?(data_path) do
-            File.mkdir_p!(data_path)
-          end
-
           base_deposit = Config.get(:base_deposit)
           config_ip = Config.get(:ip) |> Utils.ip_to_integer()
           port = Config.get(:port)

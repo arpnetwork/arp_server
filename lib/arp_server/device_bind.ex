@@ -3,12 +3,8 @@ defmodule ARP.DeviceBind do
 
   use GenServer
 
-  alias ARP.DevicePool
+  alias ARP.{Config, DevicePool}
   alias ARP.API.TCP.DeviceProtocol
-
-  @device_bind_path Application.get_env(:arp_server, :data_dir)
-                    |> Path.join("device_bind")
-                    |> String.to_charlist()
 
   @expired_time 60 * 60 * 24 * 7
   @check_interval 1000 * 60 * 10
@@ -141,7 +137,7 @@ defmodule ARP.DeviceBind do
 
   def init(_opts) do
     tab =
-      case :ets.file2tab(@device_bind_path, verify: true) do
+      case :ets.file2tab(file_path(), verify: true) do
         {:ok, tab} ->
           tab
 
@@ -155,7 +151,7 @@ defmodule ARP.DeviceBind do
   end
 
   def handle_cast(:write, %{tab: tab} = state) do
-    :ets.tab2file(tab, @device_bind_path, extended_info: [:md5sum])
+    :ets.tab2file(tab, file_path(), extended_info: [:md5sum])
     {:noreply, state}
   end
 
@@ -190,5 +186,11 @@ defmodule ARP.DeviceBind do
   defp calc_expired do
     now = DateTime.utc_now() |> DateTime.to_unix()
     now + @expired_time
+  end
+
+  defp file_path do
+    Config.get(:data_path)
+    |> Path.join("device_bind")
+    |> String.to_charlist()
   end
 end

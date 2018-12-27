@@ -4,11 +4,17 @@ defmodule ARP.Application do
   use Application
 
   def start(_type, _args) do
+    data_path = Path.join(System.user_home(), Application.get_env(:arp_server, :data_dir))
+
+    unless File.exists?(data_path) do
+      File.mkdir_p!(data_path)
+    end
+
     ARP.Admin.init()
 
     children = [
       {DynamicSupervisor, strategy: :one_for_one, name: ARP.DynamicSupervisor},
-      ARP.Config,
+      {ARP.Config, data_path: data_path},
       ARP.Nonce,
       ARP.Account,
       ARP.DevicePool,

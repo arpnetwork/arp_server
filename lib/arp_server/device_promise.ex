@@ -1,11 +1,9 @@
 defmodule ARP.DevicePromise do
   @moduledoc false
 
-  use GenServer
+  alias ARP.Config
 
-  @file_path Application.get_env(:arp_server, :data_dir)
-             |> Path.join("device_promise")
-             |> String.to_charlist()
+  use GenServer
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -39,7 +37,7 @@ defmodule ARP.DevicePromise do
 
   def init(_opts) do
     tab =
-      case :ets.file2tab(@file_path, verify: true) do
+      case :ets.file2tab(file_path(), verify: true) do
         {:ok, tab} ->
           tab
 
@@ -56,7 +54,13 @@ defmodule ARP.DevicePromise do
   end
 
   def handle_cast(:write, %{tab: tab} = state) do
-    :ets.tab2file(tab, @file_path, extended_info: [:md5sum])
+    :ets.tab2file(tab, file_path(), extended_info: [:md5sum])
     {:noreply, state}
+  end
+
+  defp file_path do
+    Config.get(:data_path)
+    |> Path.join("device_promise")
+    |> String.to_charlist()
   end
 end

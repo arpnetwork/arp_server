@@ -3,11 +3,9 @@ defmodule ARP.Nonce do
   Manager send nonce.
   """
 
-  use GenServer
+  alias ARP.Config
 
-  @nonce_path Application.get_env(:arp_server, :data_dir)
-              |> Path.join("nonce")
-              |> String.to_charlist()
+  use GenServer
 
   def get(from, to) do
     case :ets.lookup(__MODULE__, {from, to}) do
@@ -59,7 +57,7 @@ defmodule ARP.Nonce do
 
   def init(_opts) do
     tab =
-      case :ets.file2tab(@nonce_path, verify: true) do
+      case :ets.file2tab(file_path(), verify: true) do
         {:ok, tab} ->
           tab
 
@@ -71,7 +69,13 @@ defmodule ARP.Nonce do
   end
 
   def handle_cast(:write, %{tab: tab} = state) do
-    :ets.tab2file(tab, @nonce_path, extended_info: [:md5sum])
+    :ets.tab2file(tab, file_path(), extended_info: [:md5sum])
     {:noreply, state}
+  end
+
+  defp file_path do
+    Config.get(:data_path)
+    |> Path.join("nonce")
+    |> String.to_charlist()
   end
 end

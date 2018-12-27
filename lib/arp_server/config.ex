@@ -5,10 +5,6 @@ defmodule ARP.Config do
 
   use GenServer
 
-  @config_path Application.get_env(:arp_server, :data_dir)
-               |> Path.join("config")
-               |> String.to_charlist()
-
   @external_config [
     {:port, :integer},
     {:deposit, :integer},
@@ -18,13 +14,13 @@ defmodule ARP.Config do
     {:keystore, :map}
   ]
 
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  def init(_opts) do
+  def init(opts) do
     tab =
-      case :ets.file2tab(@config_path, verify: true) do
+      case :ets.file2tab(file_path(opts[:data_path]), verify: true) do
         {:ok, tab} ->
           tab
 
@@ -33,7 +29,7 @@ defmodule ARP.Config do
       end
 
     fixed_config = Application.get_all_env(:arp_server)
-    :ets.insert(tab, fixed_config)
+    :ets.insert(tab, opts ++ fixed_config)
 
     write_file(tab)
 
@@ -116,8 +112,15 @@ defmodule ARP.Config do
     {:noreply, tab}
   end
 
+  defp file_path(data_path) do
+    data_path
+    |> Path.join("config")
+    |> String.to_charlist()
+  end
+
   defp write_file(tab) do
-    :ets.tab2file(tab, @config_path, extended_info: [:md5sum])
+    file_path = file_path(get(:data_path))
+    :ets.tab2file(tab, file_path, extended_info: [:md5sum])
   end
 
   defp check_data_type(data, type) do
