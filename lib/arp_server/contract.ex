@@ -78,55 +78,39 @@ defmodule ARP.Contract do
   @doc """
   Approve to bank contract.
   """
-  def approve(
-        private_key,
-        value,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def approve(private_key, value, gas_price \\ @default_gas_price) do
     address = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("approve(address,uint256)", [address, value])
 
-    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price)
   end
 
   @doc """
   Increase approve to bank contract.
   """
-  def increase_approve(
-        private_key,
-        value,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def increase_approve(private_key, value, gas_price \\ @default_gas_price) do
     address = @bank_contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("increaseApproval(address,uint256)", [address, value])
 
-    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price)
   end
 
   @doc """
   Register miner.
   """
-  def register(
-        private_key,
-        ip,
-        port,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def register(private_key, ip, port, gas_price \\ @default_gas_price) do
     encoded_abi = ABI.encode("registerServer(uint32,uint16)", [ip, port])
 
-    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price)
   end
 
   @doc """
   Unregister miner.
   """
-  def unregister(private_key, gas_price \\ @default_gas_price, gas_limit \\ @default_gas_limit) do
+  def unregister(private_key, gas_price \\ @default_gas_price) do
     encoded_abi = ABI.encode("unregisterServer()", [])
 
-    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price)
   end
 
   @doc """
@@ -237,52 +221,32 @@ defmodule ARP.Contract do
     end
   end
 
-  def unbind_device_by_server(
-        private_key,
-        device_addr,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def unbind_device_by_server(private_key, device_addr, gas_price \\ @default_gas_price) do
     device_addr = device_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
     encoded_abi = ABI.encode("unbindDeviceByServer(address)", [device_addr])
 
-    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price)
   end
 
-  def unbind_app_by_server(
-        private_key,
-        dapp_addr,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def unbind_app_by_server(private_key, dapp_addr, gas_price \\ @default_gas_price) do
     dapp_addr = dapp_addr |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
     encoded_abi = ABI.encode("unbindAppByServer(address)", [dapp_addr])
 
-    send_transaction(@registry_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@registry_contract, encoded_abi, private_key, gas_price)
   end
 
-  def bank_deposit(
-        private_key,
-        value,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def bank_deposit(private_key, value, gas_price \\ @default_gas_price) do
     encoded_abi = ABI.encode("deposit(uint256)", [value])
 
-    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price)
   end
 
-  def bank_withdraw(
-        private_key,
-        value,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def bank_withdraw(private_key, value, gas_price \\ @default_gas_price) do
     encoded_abi = ABI.encode("withdraw(uint256)", [value])
 
-    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price)
   end
 
   def bank_balance(owner) do
@@ -308,8 +272,7 @@ defmodule ARP.Contract do
         amount,
         expired,
         proxy \\ 0,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
+        gas_price \\ @default_gas_price
       ) do
     spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
@@ -323,7 +286,7 @@ defmodule ARP.Contract do
     encoded_abi =
       ABI.encode("approve(address, uint256, uint256, address)", [spender, amount, expired, proxy])
 
-    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price)
   end
 
   def bank_allowance(owner, spender \\ @registry_contract) do
@@ -365,15 +328,14 @@ defmodule ARP.Contract do
         spender,
         value,
         expired,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
+        gas_price \\ @default_gas_price
       ) do
     spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
     encoded_abi =
       ABI.encode("increaseApproval(address, uint256, uint256)", [spender, value, expired])
 
-    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price)
   end
 
   def bank_cash(
@@ -382,8 +344,7 @@ defmodule ARP.Contract do
         spender,
         amount,
         sign,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
+        gas_price \\ @default_gas_price
       ) do
     owner = owner |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     spender = spender |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
@@ -399,7 +360,7 @@ defmodule ARP.Contract do
         s
       ])
 
-    send_transaction(@bank_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@bank_contract, encoded_abi, private_key, gas_price)
   end
 
   @spec get_bound_device(binary()) :: {:ok, any()} | {:error, atom() | binary() | map()}
@@ -485,35 +446,30 @@ defmodule ARP.Contract do
   @doc """
   Transfer arp to some one.
   """
-  def transfer_arp(
-        private_key,
-        to,
-        value,
-        gas_price \\ @default_gas_price,
-        gas_limit \\ @default_gas_limit
-      ) do
+  def transfer_arp(private_key, to, value, gas_price \\ @default_gas_price) do
     to = to |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
     encoded_abi = ABI.encode("transfer(address,uint)", [to, value])
 
-    send_transaction(@token_contract, encoded_abi, private_key, gas_price, gas_limit)
+    send_transaction(@token_contract, encoded_abi, private_key, gas_price)
   end
 
   @doc """
   Send transaction to a contract.
   """
-  @spec send_transaction(String.t(), String.t(), String.t(), integer(), integer()) ::
+  @spec send_transaction(String.t(), String.t(), String.t(), integer()) ::
           {:ok, map()} | {:error, any()}
-  def send_transaction(contract, encoded_abi, private_key, gas_price, gas_limit) do
+  def send_transaction(contract, encoded_abi, private_key, gas_price) do
     from = private_key |> Crypto.eth_privkey_to_pubkey() |> Crypto.get_eth_addr()
     private_key = Base.decode16!(private_key, case: :mixed)
-    contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
+    decoded_contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
-    with {:ok, nonce} <- get_transaction_count(from) do
+    with {:ok, gas_limit} <- get_estimate_gas(contract, encoded_abi),
+         {:ok, nonce} <- get_transaction_count(from) do
       bt = %Blockchain.Transaction{
         nonce: nonce,
         gas_price: gas_price,
         gas_limit: gas_limit,
-        to: contract,
+        to: decoded_contract,
         value: 0,
         v: 0,
         r: 0,
@@ -538,6 +494,25 @@ defmodule ARP.Contract do
         _ ->
           res
       end
+    else
+      err -> err
+    end
+  end
+
+  @doc """
+  Get estimate gas.
+  """
+  @spec get_estimate_gas(String.t(), String.t()) ::
+          {:ok, integer()} | {:error, map() | binary() | atom()}
+  def get_estimate_gas(to, encoded_abi) do
+    params = %{
+      to: to,
+      gas: "0x" <> Integer.to_string(@default_gas_limit, 16),
+      data: "0x" <> Base.encode16(encoded_abi, case: :lower)
+    }
+
+    with {:ok, res} <- HttpClient.request("eth_estimateGas", [params], []) do
+      {:ok, hex_string_to_integer(res)}
     else
       err -> err
     end
