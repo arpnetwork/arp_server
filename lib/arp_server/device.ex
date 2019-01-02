@@ -249,16 +249,30 @@ defmodule ARP.Device do
   def handle_info(:check, %{device_address: device_address} = state) do
     server_addr = Account.address()
 
-    with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, device_address),
-         promise <- DevicePromise.get(device_address),
-         true <- id == 0 || (!is_nil(promise) && promise.cid != id) do
-      DevicePromise.delete(device_address)
-      Logger.info("device unbound. address: #{device_address}")
-      {:stop, :normal, state}
-    else
-      _ ->
+    Task.async(fn ->
+      with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, device_address),
+           promise <- DevicePromise.get(device_address),
+           true <- id == 0 || (!is_nil(promise) && promise.cid != id) do
+        {:check_result, :unbound}
+      else
+        _ ->
+          {:check_result, :ok}
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+  def handle_info({_ref, {:check_result, result}}, %{device_address: device_address} = state) do
+    case result do
+      :ok ->
         Process.send_after(self(), :check, @check_interval)
         {:noreply, state}
+
+      :unbound ->
+        Logger.info("device unbound. address: #{device_address}")
+        DevicePromise.delete(device_address)
+        {:stop, :normal, state}
     end
   end
 
