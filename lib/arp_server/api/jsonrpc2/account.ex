@@ -10,7 +10,7 @@ defmodule ARP.API.JSONRPC2.Account do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :pay, 5)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <-
            Protocol.verify(method, [promise, amount, device_addr], nonce, sign, addr),
@@ -27,13 +27,13 @@ defmodule ARP.API.JSONRPC2.Account do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :last, 2)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <- Protocol.verify(method, [cid], sign, addr) do
       promise = DappPromise.get(dapp_addr)
 
       if promise == nil || promise.cid != decode_cid do
-        Protocol.response({:error, "Promise not found!"})
+        Protocol.response({:error, :promise_not_found})
       else
         promise =
           promise

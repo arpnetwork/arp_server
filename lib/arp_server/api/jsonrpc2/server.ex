@@ -18,7 +18,7 @@ defmodule ARP.API.JSONRPC2.Server do
         Protocol.response(resp, spender, private_key)
 
       :error ->
-        Protocol.response({:error, "get bind promise faild!"})
+        Protocol.response({:error, :get_bind_promise_faild})
     end
   end
 end

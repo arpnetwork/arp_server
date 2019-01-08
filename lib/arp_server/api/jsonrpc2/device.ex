@@ -12,7 +12,7 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :request, 5)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_address} <- Protocol.verify(method, [price, ip, port], nonce, sign, addr),
          dev when is_map(dev) <- DevicePool.request(dapp_address, decoded_price, ip, port) do
@@ -27,7 +27,7 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :release, 3)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_address} <- Protocol.verify(method, [address], nonce, sign, addr) do
       DevicePool.release(address, dapp_address)
@@ -55,7 +55,7 @@ defmodule ARP.API.JSONRPC2.Device do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :bind, 5)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, ^device_addr} <-
            Protocol.verify(method, [device_addr, type, sub_addr_list], nonce, sign, addr),
@@ -86,10 +86,10 @@ defmodule ARP.API.JSONRPC2.Device do
       end
     else
       {:ok, _} ->
-        Protocol.response({:error, "Invalid sign 2"})
+        Protocol.response({:error, :invalid_sign_2})
 
       false ->
-        Protocol.response({:error, "Invalid sub_sign"})
+        Protocol.response({:error, :invalid_sub_sign})
 
       err ->
         Protocol.response(err)

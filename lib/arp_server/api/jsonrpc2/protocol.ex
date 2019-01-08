@@ -14,11 +14,14 @@ defmodule ARP.API.JSONRPC2.Protocol do
       {:ok, address}
     else
       {:error, reason} when is_atom(reason) ->
-        msg = reason |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
+        {:error, reason}
+
+      {:error, reason} when is_binary(reason) ->
+        msg = str_to_atom(reason)
         {:error, msg}
 
       _ ->
-        {:error, "Invalid sign"}
+        {:error, :invalid_sign}
     end
   end
 
@@ -30,11 +33,14 @@ defmodule ARP.API.JSONRPC2.Protocol do
       {:ok, address}
     else
       {:error, reason} when is_atom(reason) ->
-        msg = reason |> Atom.to_string() |> String.capitalize() |> String.replace("_", " ")
+        {:error, reason}
+
+      {:error, reason} when is_binary(reason) ->
+        msg = str_to_atom(reason)
         {:error, msg}
 
       _ ->
-        {:error, "Invalid sign"}
+        {:error, :invalid_sign}
     end
   end
 
@@ -59,7 +65,7 @@ defmodule ARP.API.JSONRPC2.Protocol do
   def response({:error, msg}) do
     new_msg =
       unless is_atom(msg) do
-        msg |> String.downcase() |> String.replace(" ", "_") |> String.to_atom()
+        str_to_atom(msg)
       end
 
     {:error, new_msg || msg}
@@ -88,21 +94,10 @@ defmodule ARP.API.JSONRPC2.Protocol do
     {:ok, Map.put(data, :sign, data_sign)}
   end
 
-  def get_method(module, fun_name, arity) do
-    fun = Function.capture(module, fun_name, arity)
-    info = Function.info(fun)
-
-    module =
-      info
-      |> Keyword.get(:module)
-      |> Atom.to_string()
-      |> String.split(".", [])
-      |> List.last()
-      |> String.downcase()
-      |> String.to_atom()
-
-    name = Keyword.get(info, :name)
-    Misc.to_method_name(module, name)
+  def get_method(module, env) do
+    mod = module |> Module.split() |> List.last() |> String.downcase() |> String.to_atom()
+    fun_name = elem(env.function, 0)
+    Misc.to_method_name(mod, fun_name)
   end
 
   # Encode params for JSONRPC2 request sign.
@@ -124,5 +119,9 @@ defmodule ARP.API.JSONRPC2.Protocol do
       |> Enum.map_join(":", fn {_, v} -> v end)
 
     "#{encoded_params}:#{to_addr}"
+  end
+
+  defp str_to_atom(msg) do
+    msg |> String.downcase() |> String.replace(" ", "_") |> String.to_atom()
   end
 end

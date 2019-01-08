@@ -11,7 +11,7 @@ defmodule ARP.API.JSONRPC2.App do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :install, 7)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <-
            Protocol.verify(
@@ -34,7 +34,7 @@ defmodule ARP.API.JSONRPC2.App do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :install, 8)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <-
            Protocol.verify(
@@ -57,7 +57,7 @@ defmodule ARP.API.JSONRPC2.App do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :uninstall, 4)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <- Protocol.verify(method, [device_addr, package], nonce, sign, addr),
          {_, %{tcp_pid: tcp_pid, dapp_address: ^dapp_addr}} <- DevicePool.get(device_addr) do
@@ -73,7 +73,7 @@ defmodule ARP.API.JSONRPC2.App do
     private_key = Account.private_key()
     addr = Account.address()
 
-    method = Protocol.get_method(__MODULE__, :start, 4)
+    method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <- Protocol.verify(method, [device_addr, package], nonce, sign, addr),
          {_, %{tcp_pid: tcp_pid, dapp_address: ^dapp_addr}} <- DevicePool.get(device_addr) do
