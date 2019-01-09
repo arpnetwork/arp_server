@@ -264,11 +264,15 @@ defmodule ARP.Account do
       with {:ok, %{"status" => "0x1"}} <-
              Contract.bank_increase_approval(private_key, device_addr, amount, expired) do
         Logger.info("increase allowance success. device_addr: #{device_addr}")
+        {:ok, new_allowance} = Contract.bank_allowance(server_addr, device_addr)
+
+        {:increase_result, device_addr, new_allowance}
+      else
+        err ->
+          Logger.info(
+            "increase allowance faild. device_addr: " <> device_addr <> "reason: " <> inspect(err)
+          )
       end
-
-      {:ok, new_allowance} = Contract.bank_allowance(server_addr, device_addr)
-
-      {:increase_result, device_addr, new_allowance}
     end)
   end
 end

@@ -463,7 +463,7 @@ defmodule ARP.Contract do
     private_key = Base.decode16!(private_key, case: :mixed)
     decoded_contract = contract |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
 
-    with {:ok, gas_limit} <- get_estimate_gas(contract, encoded_abi),
+    with {:ok, gas_limit} <- get_estimate_gas(from, contract, encoded_abi),
          {:ok, nonce} <- get_transaction_count(from) do
       bt = %Blockchain.Transaction{
         nonce: nonce,
@@ -502,10 +502,11 @@ defmodule ARP.Contract do
   @doc """
   Get estimate gas.
   """
-  @spec get_estimate_gas(String.t(), String.t()) ::
+  @spec get_estimate_gas(String.t(), String.t(), String.t()) ::
           {:ok, integer()} | {:error, map() | binary() | atom()}
-  def get_estimate_gas(to, encoded_abi) do
+  def get_estimate_gas(from, to, encoded_abi) do
     params = %{
+      from: from,
       to: to,
       gas: "0x" <> Integer.to_string(@default_gas_limit, 16),
       data: "0x" <> Base.encode16(encoded_abi, case: :lower)
