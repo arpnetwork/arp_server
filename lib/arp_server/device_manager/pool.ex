@@ -1,8 +1,11 @@
-defmodule ARP.DevicePool do
-  @moduledoc false
+defmodule ARP.DeviceManager.Pool do
+  @moduledoc """
+  Pool
+  """
 
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.{Account, DappPool, Device, Utils}
+  alias ARP.{DappManager, Utils}
+  alias ARP.DeviceManager.{Allowance, Device, Owner, SpeedTester}
 
   use GenServer
 
@@ -49,9 +52,9 @@ defmodule ARP.DevicePool do
   end
 
   def get_device_size(device_addr) do
-    # :ets.fun2ms(fn {addr, pid, dev} when :erlang.map_get(:device_address, dev) == device_addr -> addr end)
+    # :ets.fun2ms(fn {addr, pid, dev} when :erlang.map_get(:owner_address, dev) == device_addr -> addr end)
     match = [
-      {{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :device_address, :"$3"}, {:const, device_addr}}],
+      {{:"$1", :"$2", :"$3"}, [{:==, {:map_get, :owner_address, :"$3"}, {:const, device_addr}}],
        [:"$1"]}
     ]
 
@@ -79,7 +82,7 @@ defmodule ARP.DevicePool do
         GenServer.call(__MODULE__, {:offline, address})
 
         if Device.is_allocating?(dev) do
-          DappPool.notify_device_offline(dev.dapp_address, address)
+          DappManager.device_offline(dev.dapp_address, address)
         end
 
         :ok
@@ -95,7 +98,7 @@ defmodule ARP.DevicePool do
         Device.idle(pid)
 
         if Device.is_allocating?(dev) do
-          DappPool.notify_device_offline(dev.dapp_address, address)
+          DappManager.device_offline(dev.dapp_address, address)
         end
 
         :ok
@@ -119,7 +122,7 @@ defmodule ARP.DevicePool do
   end
 
   def request(dapp_address, price, ip, port) do
-    if DappPool.check(dapp_address) do
+    if DappManager.check_and_create(dapp_address) do
       GenServer.call(__MODULE__, {:request, dapp_address, price, ip, port})
     else
       {:error, :bind_error}
@@ -162,7 +165,7 @@ defmodule ARP.DevicePool do
 
     with false <- :ets.member(__MODULE__, addr),
          {:ok, ref} <- create(device),
-         :ok <- Account.set_allowance(device.device_address) do
+         :ok <- Allowance.set(device.owner_address) do
       refs = Map.put(refs, ref, addr)
       {:reply, :ok, Map.put(state, :refs, refs)}
     else
@@ -181,10 +184,13 @@ defmodule ARP.DevicePool do
     with {pid, dev} <- get(address) do
       :ets.delete(__MODULE__, address)
       GenServer.stop(pid)
-      # check device_address sub_addr num
-      if get_device_size(dev.device_address) == 0 do
-        Account.del_allowance(dev.device_address)
+      # check owner_address device_addr num
+      if get_device_size(dev.owner_address) == 0 do
+        Allowance.delete(dev.owner_address)
       end
+
+      SpeedTester.offline(dev.original_ip, dev.address)
+      Owner.update_expired(dev.owner_address, dev.address)
 
       {:reply, :ok, state}
     else
@@ -194,7 +200,7 @@ defmodule ARP.DevicePool do
   end
 
   def handle_call({:request, dapp_address, price, ip, port}, _from, state) do
-    with :ok <- DappPool.set(dapp_address, ip, port),
+    with :ok <- DappManager.set_info(dapp_address, ip, port),
          {:ok, dev} <- find_device(%{price: price}),
          {pid, _dev} <- get(dev.address),
          :ok <- Device.allocating(pid, dapp_address, price),
@@ -256,7 +262,7 @@ defmodule ARP.DevicePool do
   end
 
   defp create(dev) do
-    case DynamicSupervisor.start_child(ARP.DynamicSupervisor, {ARP.Device, [device: dev]}) do
+    case DynamicSupervisor.start_child(:device_pool, {Device, [device: dev]}) do
       {:ok, pid} ->
         :ets.insert(__MODULE__, {dev.address, pid, dev})
         ref = Process.monitor(pid)

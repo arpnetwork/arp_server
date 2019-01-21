@@ -1,12 +1,13 @@
-defmodule ARP.Device do
+defmodule ARP.DeviceManager.Device do
   @moduledoc """
-  Record online device.
+  Device
   """
 
   require Logger
 
-  alias ARP.{Account, Contract, DevicePool, DeviceBind, DevicePromise}
+  alias ARP.{Account, Contract}
   alias ARP.API.TCP.DeviceProtocol
+  alias ARP.DeviceManager.Pool
 
   use GenServer, restart: :temporary
 
@@ -18,7 +19,7 @@ defmodule ARP.Device do
   @check_interval 1000 * 60 * 10
 
   defstruct [
-    :device_address,
+    :owner_address,
     :address,
     :tcp_pid,
     :price,
@@ -130,58 +131,20 @@ defmodule ARP.Device do
     end
   end
 
-  def check_device_allowance(device_addr, type, sub_addr_len) do
-    with {:ok, approve_info} <- Contract.bank_allowance(device_addr),
-         {:ok, device_hold} <- Contract.get_device_holding() do
-      case type do
-        1 ->
-          if approve_info.amount >= device_hold * sub_addr_len do
-            :ok
-          else
-            {:error, :device_allowance_low}
-          end
-
-        2 ->
-          bind_len =
-            case DeviceBind.get(device_addr) do
-              false ->
-                0
-
-              list ->
-                length(list)
-            end
-
-          len = bind_len + sub_addr_len
-
-          if approve_info.amount >= device_hold * len do
-            :ok
-          else
-            {:error, :device_allowance_low}
-          end
-
-        _ ->
-          {:error, :bind_type_err}
-      end
-    else
-      _ ->
-        {:error, :device_allowance_low}
-    end
-  end
-
   ## Callbacks
 
   def init(opts) do
     dev = opts[:device]
     server_addr = Account.address()
 
-    with {:ok, allowance} <- Contract.bank_allowance(server_addr, dev.device_address),
+    with {:ok, allowance} <- Contract.bank_allowance(server_addr, dev.owner_address),
          true <- allowance.id > 0,
          true <- allowance.expired == 0 do
       Process.send_after(self(), :check, @check_interval)
 
       {:ok,
        %{
-         device_address: dev.device_address,
+         owner_address: dev.owner_address,
          address: dev.address,
          allowance: allowance,
          increasing: false
@@ -193,10 +156,10 @@ defmodule ARP.Device do
   end
 
   def handle_call(:idle, _from, %{address: address} = state) do
-    case DevicePool.get(address) do
+    case Pool.get(address) do
       {_pid, dev} ->
         dev = set_idle(dev)
-        DevicePool.update(address, dev)
+        Pool.update(address, dev)
         {:reply, :ok, state}
 
       _ ->
@@ -209,11 +172,11 @@ defmodule ARP.Device do
         _from,
         %{address: address} = state
       ) do
-    case DevicePool.get(address) do
+    case Pool.get(address) do
       {_pid, dev} ->
         dev = %{dev | upload_speed: upload_speed, download_speed: download_speed}
         dev = if is_pending?(dev), do: set_idle(dev), else: dev
-        DevicePool.update(address, dev)
+        Pool.update(address, dev)
         {:reply, :ok, state}
 
       _ ->
@@ -222,9 +185,9 @@ defmodule ARP.Device do
   end
 
   def handle_call({:allocating, dapp_address, dapp_price}, _from, %{address: address} = state) do
-    with {_pid, dev} <- DevicePool.get(address),
+    with {_pid, dev} <- Pool.get(address),
          {:ok, dev} <- set_allocating(dev, dapp_address, dapp_price),
-         true <- DevicePool.update(address, dev) do
+         true <- Pool.update(address, dev) do
       {:reply, :ok, state}
     else
       _ ->
@@ -233,11 +196,11 @@ defmodule ARP.Device do
   end
 
   def handle_cast({:release, address, dapp_address}, state) do
-    with {_pid, dev} <- DevicePool.get(address),
+    with {_pid, dev} <- Pool.get(address),
          ^dapp_address <- dev.dapp_address,
          :ok = DeviceProtocol.alloc_end(dev.tcp_pid, dapp_address) do
       dev = set_idle(dev)
-      DevicePool.update(address, dev)
+      Pool.update(address, dev)
 
       {:noreply, state}
     else
@@ -246,12 +209,12 @@ defmodule ARP.Device do
     end
   end
 
-  def handle_info(:check, %{device_address: device_address} = state) do
+  def handle_info(:check, %{owner_address: owner_address} = state) do
     server_addr = Account.address()
 
     Task.async(fn ->
-      with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, device_address),
-           promise <- DevicePromise.get(device_address),
+      with {:ok, %{id: id}} <- Contract.bank_allowance(server_addr, owner_address),
+           promise <- Account.get_device_promise(owner_address),
            true <- id == 0 || (!is_nil(promise) && promise.cid != id) do
         {:check_result, :unbound}
       else
@@ -263,15 +226,15 @@ defmodule ARP.Device do
     {:noreply, state}
   end
 
-  def handle_info({_ref, {:check_result, result}}, %{device_address: device_address} = state) do
+  def handle_info({_ref, {:check_result, result}}, %{owner_address: owner_address} = state) do
     case result do
       :ok ->
         Process.send_after(self(), :check, @check_interval)
         {:noreply, state}
 
       :unbound ->
-        Logger.info("device unbound. address: #{device_address}")
-        DevicePromise.delete(device_address)
+        Logger.info("device unbound. address: #{owner_address}")
+        Account.delete_device_promise(owner_address)
         {:stop, :normal, state}
     end
   end

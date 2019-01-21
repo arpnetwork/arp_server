@@ -3,13 +3,15 @@ defmodule ARP.API.HTTP.Router do
   Define routes.
   """
 
+  alias Plug.Conn.Status
+
+  alias ARP.Admin
+  alias ARP.API.HTTP.Response
+
   use Plug.Router
   use Plug.ErrorHandler
 
   require Logger
-
-  alias ARP.API.HTTP.Response
-  alias ARP.Admin
 
   @skip_token_verification %{joken_skip: true}
 
@@ -117,7 +119,7 @@ defmodule ARP.API.HTTP.Router do
 
   def handle_errors(conn, %{kind: _kind, reason: _reason, stack: _stack}) do
     Logger.warn("Sent #{conn.status}")
-    send_resp(conn, conn.status, Plug.Conn.Status.reason_phrase(conn.status))
+    send_resp(conn, conn.status, Status.reason_phrase(conn.status))
   end
 
   def verify_token do

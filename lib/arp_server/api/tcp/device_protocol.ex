@@ -3,18 +3,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
   tcp device protocol
   """
 
-  alias ARP.{
-    Account,
-    Config,
-    Contract,
-    Crypto,
-    Device,
-    DeviceBind,
-    DeviceNetSpeed,
-    DevicePool,
-    DevicePromise,
-    Promise
-  }
+  alias ARP.{Account, Config, Contract, Crypto, DeviceManager}
 
   require Logger
 
@@ -167,11 +156,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     end)
 
     # Delete device info
-    with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
-      DeviceNetSpeed.offline(dev.original_ip, dev.address)
-      DevicePool.offline(dev.address)
-      DeviceBind.update_expired(dev.device_address, dev.address)
-    end
+    DeviceManager.offline(sub_addr)
   end
 
   @doc """
@@ -377,29 +362,29 @@ defmodule ARP.API.TCP.DeviceProtocol do
     addr = Account.address()
 
     with {:ok, sub_addr} <- Crypto.eth_recover(salt, sign),
-         {:ok, device_addr} <- DeviceBind.get_device_addr(sub_addr),
+         device_addr when not is_nil(device_addr) <- DeviceManager.get_owner_address(sub_addr),
          {:ok, %{server: ^addr}} <- Contract.get_device_bind_info(device_addr),
          {:ok, %{id: cid, paid: paid}} <- Contract.bank_allowance(addr, device_addr) do
       state = Map.put(state, :device_addr, device_addr)
 
       # check promise
       remote_promise = check_remote_promise(promise, cid, addr, device_addr)
-      local_promise = DevicePromise.get(device_addr)
+      local_promise = Account.get_device_promise(device_addr)
       local_promise = check_local_promise(local_promise, cid, addr, device_addr)
 
       cond do
         cid == 0 ->
           # promise is invalid
-          DevicePromise.delete(device_addr)
+          Account.delete_device_promise(device_addr)
 
         remote_promise && (is_nil(local_promise) || local_promise.amount < remote_promise.amount) ->
           # recover device promise when local promise is invalid
-          DevicePromise.set(device_addr, remote_promise)
+          Account.set_device_promise(device_addr, remote_promise)
 
         is_nil(local_promise) && is_nil(remote_promise) ->
-          DevicePromise.set(
+          Account.set_device_promise(
             device_addr,
-            Promise.create(private_key, cid, addr, device_addr, paid)
+            Account.create_promise(private_key, cid, addr, device_addr, paid)
           )
 
         true ->
@@ -427,7 +412,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     state = Map.put(state, :sub_addr, sub_addr)
 
     net_type =
-      case Device.check_port(host |> to_charlist(), data[:tcp_port]) do
+      case DeviceManager.check_port(host |> to_charlist(), data[:tcp_port]) do
         :ok -> @cmd_net_type_external
         _ -> @cmd_net_type_internal
       end
@@ -435,7 +420,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
     data = data |> Map.put(:net_type, net_type)
 
     cond do
-      DevicePool.size() >= Config.get(:max_load) ->
+      DeviceManager.size() >= Config.get(:max_load) ->
         online_resp(socket, @cmd_result_max_load_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
 
@@ -448,7 +433,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
         Logger.info("online faild, reason: device verify err, device addr: #{device_addr}")
 
-      !DeviceBind.is_bind?(device_addr, sub_addr) ->
+      !DeviceManager.is_bind?(device_addr, sub_addr) ->
         online_resp(socket, @cmd_result_verify_err)
         Process.send_after(self(), {:tcp_closed, socket}, 5000)
 
@@ -488,10 +473,10 @@ defmodule ARP.API.TCP.DeviceProtocol do
           end
 
         with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
-             device = struct(ARP.Device, data),
+             device = DeviceManager.create(data),
              device =
                struct(device, %{
-                 device_address: device_addr,
+                 owner_address: device_addr,
                  tcp_pid: self(),
                  ip: host,
                  original_ip: ip,
@@ -499,7 +484,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
                  features: %{bpk: bpk, landscape: landscape}
                }),
              :ok <- online(device) do
-          DeviceNetSpeed.online(ip, sub_addr, self())
+          DeviceManager.test_speed(ip, sub_addr, self())
 
           online_resp(socket, @cmd_result_success, net_type)
 
@@ -578,7 +563,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
         ip = get_ip(socket)
         # set final speed
         Logger.debug(fn -> "net speed ul: #{ul_speed}, dl: #{dl_speed}, ip: #{ip}" end)
-        DeviceNetSpeed.set(ip, ul_speed, dl_speed)
+        DeviceManager.set_speed(ip, ul_speed, dl_speed)
 
         %{state | speed_test: speed_test}
 
@@ -625,11 +610,11 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   defp online(device) do
     res =
-      with :ok <- DevicePool.online(device) do
+      with :ok <- DeviceManager.online(device) do
         :ok
       else
         {:error, :duplicate_address} ->
-          with {_, old_dev} <- DevicePool.get(device.address) do
+          with {_, old_dev} <- DeviceManager.get(device.address) do
             repeat_connect_offline(old_dev.tcp_pid, device.address)
           end
 
@@ -643,8 +628,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
   end
 
   defp idle do
-    with {_, dev} <- DevicePool.get_by_tcp_pid(self()) do
-      DevicePool.idle(dev.address)
+    with {_, dev} <- DeviceManager.get_by_tcp_pid(self()) do
+      DeviceManager.idle(dev.address)
     end
   end
 
@@ -734,11 +719,9 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   defp check_remote_promise(promise, cid, from, to) do
     with false <- is_nil(promise),
-         {:ok, promise} <- Poison.decode(promise, as: %Promise{}),
-         true <- Promise.verify(promise, from, to),
-         decoded_promise <- Promise.decode(promise),
-         true <- cid == decoded_promise.cid do
-      decoded_promise
+         {:ok, promise} <- Poison.decode(promise, as: %Account.Promise{}),
+         true <- Account.verify_promise(promise, cid, from, to) do
+      Account.decode_promise(promise)
     else
       _ -> nil
     end
@@ -746,7 +729,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
 
   defp check_local_promise(local_promise, cid, from, to) do
     if local_promise && local_promise.cid > 0 && cid == local_promise.cid &&
-         Promise.verify(Promise.encode(local_promise), from, to) do
+         Account.verify_promise(local_promise, cid, from, to) do
       local_promise
     else
       nil

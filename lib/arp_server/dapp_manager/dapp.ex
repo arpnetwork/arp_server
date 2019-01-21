@@ -1,9 +1,9 @@
-defmodule ARP.Dapp do
+defmodule ARP.DappManager.Dapp do
   @moduledoc false
 
   require Logger
 
-  alias ARP.{Account, Contract, DappPromise, DevicePool, Nonce, Promise, Utils}
+  alias ARP.{Account, Contract, DeviceManager, Nonce, Utils}
   alias ARP.API.JSONRPC2.Protocol
   alias JSONRPC2.Client.HTTP
 
@@ -15,58 +15,34 @@ defmodule ARP.Dapp do
   @dying 1
   @out_of_allowance 2
 
-  defstruct [:address, :ip, :port, :allowance, balance: 0, state: @normal]
+  defstruct [:address, :ip, :port, :allowance, balance: 0, state: @normal, devices: []]
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
-  def set(pid, ip, port) do
-    if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:set, ip, port})
-    else
-      {:error, :invalid_dapp}
-    end
+  def set_info(pid, ip, port) do
+    GenServer.call(pid, {:set_info, ip, port})
   end
 
   def get(pid) do
-    if pid && Process.alive?(pid) do
-      GenServer.call(pid, :get)
-    else
-      {:error, :invalid_dapp}
-    end
+    GenServer.call(pid, :get)
   end
 
   def normal?(pid) do
-    if pid && Process.alive?(pid) do
-      @normal == GenServer.call(pid, :state)
-    else
-      false
-    end
+    @normal == GenServer.call(pid, :state)
   end
 
   def save_promise(pid, promise, increment) do
-    if pid && Process.alive?(pid) do
-      GenServer.call(pid, {:save_promise, promise, increment})
-    else
-      {:error, :invalid_dapp}
-    end
+    GenServer.call(pid, {:save_promise, promise, increment})
   end
 
   def device_offline(pid, device_addr) do
-    if pid && Process.alive?(pid) do
-      GenServer.cast(pid, {:device_offline, device_addr})
-    else
-      {:error, :invalid_dapp}
-    end
+    GenServer.cast(pid, {:device_offline, device_addr})
   end
 
   def cash(pid) do
-    if pid && Process.alive?(pid) do
-      GenServer.cast(pid, :cash)
-    else
-      {:error, :invalid_dapp}
-    end
+    GenServer.cast(pid, :cash)
   end
 
   # Callbacks
@@ -77,13 +53,13 @@ defmodule ARP.Dapp do
     port = opts[:port]
 
     server_addr = Account.address()
-    last_promise = DappPromise.get(address) || %Promise{}
+    last_promise = Account.get_dapp_promise(address)
 
     with :ok <- check_bound(address, server_addr),
          {:ok, allowance} <- check_allowance(address, server_addr, last_promise) do
-      if last_promise.cid != nil && last_promise.cid != allowance.id do
+      if last_promise != nil && last_promise.cid != allowance.id do
         Logger.info("find invalid promise with old cid, delete it. dapp address: #{address}")
-        DappPromise.delete(address)
+        Account.delete_dapp_promise(address)
       end
 
       Process.send_after(self(), :check, @check_interval)
@@ -103,7 +79,7 @@ defmodule ARP.Dapp do
     end
   end
 
-  def handle_call({:set, ip, port}, _from, dapp) do
+  def handle_call({:set_info, ip, port}, _from, dapp) do
     {:reply, :ok, struct(dapp, ip: ip, port: port)}
   end
 
@@ -118,16 +94,16 @@ defmodule ARP.Dapp do
   def handle_call({:save_promise, promise, increment}, _from, dapp) do
     case dapp.state do
       @normal ->
-        last_promise = DappPromise.get(dapp.address)
+        last_promise = Account.get_dapp_promise(dapp.address)
 
         case check_promise(last_promise, promise, increment, dapp.allowance, dapp.balance) do
           :ok ->
             balance =
               if last_promise do
-                DappPromise.set(dapp.address, struct(promise, paid: last_promise.paid))
+                Account.set_dapp_promise(dapp.address, struct(promise, paid: last_promise.paid))
                 promise.amount - last_promise.amount - increment + dapp.balance
               else
-                DappPromise.set(dapp.address, struct(promise, paid: 0))
+                Account.set_dapp_promise(dapp.address, struct(promise, paid: 0))
                 promise.amount - increment + dapp.balance
               end
 
@@ -146,9 +122,10 @@ defmodule ARP.Dapp do
             {:reply, {:error, :out_of_allowance}, dapp}
 
           :invalid_promise ->
-            Logger.debug(fn ->
-              inspect({last_promise, promise, increment, dapp.allowance, dapp.balance})
-            end)
+            Logger.warn(
+              "Invalid promise " <>
+                inspect({last_promise, promise, increment, dapp.allowance, dapp.balance})
+            )
 
             {:reply, {:error, :invalid_promise}, dapp}
         end
@@ -175,7 +152,7 @@ defmodule ARP.Dapp do
   end
 
   def handle_cast(:cash, dapp) do
-    with promise when not is_nil(promise) <- DappPromise.get(dapp.address) do
+    with promise when not is_nil(promise) <- Account.get_dapp_promise(dapp.address) do
       do_cash(promise)
     end
 
@@ -184,18 +161,18 @@ defmodule ARP.Dapp do
 
   def handle_info(:check, dapp) do
     # check expired and allowance
-    address = dapp.address
+    dapp_address = dapp.address
     server_addr = Account.address()
-    last_promise = DappPromise.get(address) || %Promise{}
+    last_promise = Account.get_dapp_promise(dapp_address)
 
     dapp =
-      with :ok <- check_bound(address, server_addr),
-           {:ok, allowance} <- check_allowance(address, server_addr, last_promise) do
+      with :ok <- check_bound(dapp_address, server_addr),
+           {:ok, allowance} <- check_allowance(dapp_address, server_addr, last_promise) do
         struct(dapp, allowance: allowance, state: @normal)
       else
         :dying ->
           # release devices
-          DevicePool.release_by_dapp(address)
+          DeviceManager.release_by_dapp(dapp_address)
           do_cash(last_promise)
           struct(dapp, state: @dying)
 
@@ -214,29 +191,31 @@ defmodule ARP.Dapp do
 
   def handle_info({_ref, {:do_cash_result, result}}, dapp) do
     Logger.info("do cash result #{dapp.address} #{result}.")
+    server_address = Account.address()
+    last_promise = Account.get_dapp_promise(dapp.address)
 
     case result do
       :success ->
-        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
+        with promise when not is_nil(promise) <- last_promise,
              %{cid: cid} = promise,
              {:ok, %{id: ^cid, paid: paid}} <-
-               Contract.bank_allowance(dapp.address, Account.address()) do
-          DappPromise.set(dapp.address, struct(promise, paid: paid))
+               Contract.bank_allowance(dapp.address, server_address) do
+          Account.set_dapp_promise(dapp.address, struct(promise, paid: paid))
         end
 
       :failure ->
-        with promise when not is_nil(promise) <- DappPromise.get(dapp.address),
+        with promise when not is_nil(promise) <- last_promise,
              {:ok, %{id: cid, paid: paid}} <-
-               Contract.bank_allowance(dapp.address, Account.address()) do
+               Contract.bank_allowance(dapp.address, server_address) do
           if promise.cid != cid do
-            DappPromise.delete(dapp.address)
+            Account.delete_dapp_promise(dapp.address)
           else
-            DappPromise.set(dapp.address, struct(promise, paid: paid))
+            Account.set_dapp_promise(dapp.address, struct(promise, paid: paid))
           end
         end
 
       :retry ->
-        do_cash(DappPromise.get(dapp.address))
+        do_cash(last_promise)
     end
 
     {:noreply, dapp}
@@ -279,7 +258,9 @@ defmodule ARP.Dapp do
           Logger.info("dapp is not approved. dapp address: #{dapp_addr}")
           :error
 
-        paid == amount || (last_promise.cid == allowance.id && last_promise.amount == amount) ->
+        paid == amount ||
+            (last_promise != nil && last_promise.cid == allowance.id &&
+               last_promise.amount == amount) ->
           Logger.info("out of allowance. dapp address: #{dapp_addr}")
           :out_of_allowance
 

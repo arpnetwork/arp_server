@@ -1,7 +1,7 @@
 defmodule ARP.Server do
   @moduledoc false
 
-  alias ARP.{Account, Config, Contract, Crypto, DevicePool, Utils}
+  alias ARP.{Account, Config, Contract, Crypto, DeviceManager, Utils}
 
   def info do
     addr = Account.address()
@@ -10,7 +10,7 @@ defmodule ARP.Server do
       name: addr || "",
       country: "",
       bandwidth: Config.get(:bandwidth),
-      load: DevicePool.size(),
+      load: DeviceManager.size(),
       maxLoad: Config.get(:max_load)
     }
   end

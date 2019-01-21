@@ -5,7 +5,7 @@ defmodule ARP.Service do
 
   alias ARP.API.JSONRPC2.{Account, App, Device, Nonce, Server}
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.{CheckTask, Config, DeviceNetSpeed, DevicePool}
+  alias ARP.{CheckTask, Config, DeviceManager}
 
   use GenServer
 
@@ -70,11 +70,10 @@ defmodule ARP.Service do
 
   def handle_cast(:stop_service, %{pid: pid} = state) do
     # offline all device
-    devices = DevicePool.get_all()
+    devices = DeviceManager.get_all()
 
     Enum.each(devices, fn {_, _, dev} ->
-      DeviceNetSpeed.offline(dev.ip, dev.address)
-      DevicePool.offline(dev.address)
+      DeviceManager.offline(dev.address)
     end)
 
     # stop all service

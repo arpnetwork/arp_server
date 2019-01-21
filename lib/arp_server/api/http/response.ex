@@ -4,13 +4,15 @@ defmodule ARP.API.HTTP.Response do
   """
 
   alias Plug.Conn
+  alias Plug.Conn.Status
+
   alias ARP.API.HTTP.Error
 
   @default_content_type "application/json"
 
   @doc false
   def render(conn, data) do
-    render(conn, Conn.Status.code(:ok), data)
+    render(conn, Status.code(:ok), data)
   end
 
   @doc false

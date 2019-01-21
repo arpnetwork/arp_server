@@ -1,11 +1,13 @@
-defmodule ARP.DeviceNetSpeed do
+defmodule ARP.DeviceManager.SpeedTester do
   @moduledoc """
-  Record the net speed for ip.
+  SpeedTester
   """
+
   require Logger
 
   alias ARP.API.TCP.DeviceProtocol
-  alias ARP.{Config, DevicePool}
+  alias ARP.Config
+  alias ARP.DeviceManager.Pool
 
   use GenServer
 
@@ -207,7 +209,7 @@ defmodule ARP.DeviceNetSpeed do
     if l > 0 do
       avg_up = round(up / l)
       avg_down = round(down / l)
-      DevicePool.update_net_speed(device_ids, avg_up, avg_down)
+      Pool.update_net_speed(device_ids, avg_up, avg_down)
     end
   end
 

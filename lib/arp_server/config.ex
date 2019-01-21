@@ -28,8 +28,7 @@ defmodule ARP.Config do
           :ets.new(__MODULE__, [:named_table, read_concurrency: true])
       end
 
-    fixed_config = Application.get_all_env(:arp_server)
-    :ets.insert(tab, opts ++ fixed_config)
+    :ets.insert(tab, opts)
 
     write_file(tab)
 
@@ -58,7 +57,7 @@ defmodule ARP.Config do
   def get(key) do
     case :ets.lookup(__MODULE__, key) do
       [{^key, value}] -> value
-      [] -> nil
+      [] -> Application.get_env(:arp_server, key, nil)
     end
   end
 

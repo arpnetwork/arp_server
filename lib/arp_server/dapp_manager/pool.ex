@@ -1,7 +1,9 @@
-defmodule ARP.DappPool do
-  @moduledoc false
+defmodule ARP.DappManager.Pool do
+  @moduledoc """
+  Pool
+  """
 
-  alias ARP.{Account, Contract, Dapp}
+  alias ARP.DappManager.Dapp
 
   require Logger
 
@@ -20,40 +22,6 @@ defmodule ARP.DappPool do
 
   def get_all do
     :ets.tab2list(__MODULE__)
-  end
-
-  def notify_device_offline(dapp_addr, device_addr) do
-    pid = get(dapp_addr)
-    Dapp.device_offline(pid, device_addr)
-  end
-
-  def load_bound_dapp do
-    with {:ok, dapp_list} <- Contract.get_bound_dapp(Account.address()) do
-      Enum.map(dapp_list, fn dapp_addr ->
-        create(dapp_addr, nil, nil)
-      end)
-    end
-  end
-
-  def check(dapp_addr) do
-    case get(dapp_addr) do
-      nil ->
-        case create(dapp_addr, nil, nil) do
-          {:ok, pid} ->
-            Dapp.normal?(pid)
-
-          _ ->
-            false
-        end
-
-      pid ->
-        Dapp.normal?(pid)
-    end
-  end
-
-  def set(dapp_addr, ip, port) do
-    pid = get(dapp_addr)
-    Dapp.set(pid, ip, port)
   end
 
   def create(dapp_addr, ip, port) do
@@ -122,10 +90,7 @@ defmodule ARP.DappPool do
   end
 
   defp create_inner(address, ip, port) do
-    case DynamicSupervisor.start_child(
-           ARP.DynamicSupervisor,
-           {ARP.Dapp, [address: address, ip: ip, port: port]}
-         ) do
+    case DynamicSupervisor.start_child(:dapp_pool, {Dapp, [address: address, ip: ip, port: port]}) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
         {:ok, pid, ref}

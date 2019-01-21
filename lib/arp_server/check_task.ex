@@ -1,7 +1,7 @@
 defmodule ARP.CheckTask do
   @moduledoc false
 
-  alias ARP.{Account, Contract, DevicePromise}
+  alias ARP.{Account, Contract}
 
   use Task, restart: :permanent
 
@@ -40,7 +40,7 @@ defmodule ARP.CheckTask do
     with {:ok, %{server: server, expired: expired}} <- Contract.get_device_bind_info(device_addr) do
       if server == server_addr && expired != 0 && expired < now do
         Task.start(fn -> Contract.unbind_device_by_server(private_key, device_addr) end)
-        DevicePromise.delete(device_addr)
+        Account.delete_device_promise(device_addr)
       end
     end
   end

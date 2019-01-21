@@ -8,13 +8,8 @@ defmodule ARP.Admin do
     Config,
     Contract,
     Crypto,
-    Dapp,
-    DappPool,
-    DappPromise,
-    DeviceBind,
-    DevicePool,
-    DevicePromise,
-    Promise,
+    DappManager,
+    DeviceManager,
     Service,
     Utils
   }
@@ -59,7 +54,7 @@ defmodule ARP.Admin do
   def import_keystore(keystore, password) do
     keystore = keystore |> String.downcase() |> Poison.decode!()
 
-    with false <- Account.has_key(),
+    with false <- Account.exists?(),
          :ok <- Account.set_key(keystore, password) do
       Config.set(:keystore, keystore)
     else
@@ -78,7 +73,7 @@ defmodule ARP.Admin do
       is_nil(keystore) ->
         {:error, :missing_keystore}
 
-      Account.has_key() ->
+      Account.exists?() ->
         private_key = Account.private_key()
 
         case Crypto.decrypt_keystore(keystore, password) do
@@ -114,7 +109,7 @@ defmodule ARP.Admin do
   def status do
     %{
       status: get_status(),
-      load: DevicePool.size()
+      load: DeviceManager.size()
     }
   end
 
@@ -153,7 +148,7 @@ defmodule ARP.Admin do
                  Contract.bank_approve(private_key, spender, base_deposit, 0),
                {:ok, %{"status" => "0x1"}} <- Contract.register(private_key, config_ip, port) do
             Service.start_service()
-            DappPool.load_bound_dapp()
+            DappManager.load_bound_dapp(addr)
             set_status(@status_running)
 
             Logger.info("arp server is running!")
@@ -161,7 +156,7 @@ defmodule ARP.Admin do
           else
             {:ok, %{ip: ip}} when ip != 0 ->
               Service.start_service()
-              DappPool.load_bound_dapp()
+              DappManager.load_bound_dapp(addr)
               set_status(@status_running)
 
               Logger.info("arp server is running!")
@@ -205,7 +200,7 @@ defmodule ARP.Admin do
           {:ok, %{"status" => "0x1"}} = Contract.unregister(private_key)
 
           # dapp
-          info = DappPromise.get_all()
+          info = Account.get_all_dapp_promise()
           Enum.each(info, fn {k, v} -> check_dapp_bind(k, v, private_key, server_addr) end)
 
           # device
@@ -269,7 +264,7 @@ defmodule ARP.Admin do
         # all bound devices.
         with address when not is_nil(address) <- Account.address(),
              {:ok, devices} <- Contract.get_bound_device(address) do
-          bind_list = DeviceBind.get_all()
+          bind_list = DeviceManager.get_all_owner()
 
           device_list =
             Enum.reduce(bind_list, [], fn {device_addr, sub_list}, acc ->
@@ -293,7 +288,7 @@ defmodule ARP.Admin do
 
       :online ->
         # online devices
-        devices = DevicePool.get_all()
+        devices = DeviceManager.get_all()
         list = Enum.map(devices, fn {addr, _, _} -> %{address: addr} end)
         {:ok, list}
 
@@ -303,9 +298,9 @@ defmodule ARP.Admin do
   end
 
   def device_detail(address) do
-    case ARP.DevicePool.get(address) do
+    case DeviceManager.get(address) do
       {_, dev} ->
-        promise = ARP.DevicePromise.get(dev.device_address)
+        promise = Account.get_device_promise(dev.owner_address)
 
         p =
           if promise do
@@ -321,7 +316,7 @@ defmodule ARP.Admin do
   end
 
   def device_promise_list do
-    list = DevicePromise.get_all()
+    list = Account.get_all_device_promise()
 
     {:ok,
      Enum.reduce(list, [], fn {_, promise}, acc ->
@@ -335,13 +330,13 @@ defmodule ARP.Admin do
          end
 
        if is_nil(paid) do
-         DevicePromise.delete(promise.to)
+         Account.delete_device_promise(promise.to)
          acc
        else
          item =
            promise
            |> struct(paid: paid)
-           |> Promise.encode()
+           |> Account.encode_promise()
            |> Map.from_struct()
 
          [item | acc]
@@ -350,30 +345,34 @@ defmodule ARP.Admin do
   end
 
   def dapp_list do
-    list = DappPool.get_all()
+    list = DappManager.get_all()
     {:ok, Enum.map(list, fn {addr, _} -> %{address: addr} end)}
   end
 
   def dapp_detail(address) do
-    case DappPool.get(address) do
+    case DappManager.get(address) do
       nil ->
         {:error, :unknow_address}
 
       pid ->
-        device_list = DevicePool.get_by_dapp(address)
-        dapp = Dapp.get(pid)
+        device_list = DeviceManager.get_by_dapp(address)
+        dapp = DappManager.get_info(pid)
         {:ok, %{ip: dapp.ip, port: dapp.port, device_count: length(device_list)}}
     end
   end
 
   def dapp_promise_list do
-    list = DappPromise.get_all()
-    {:ok, Enum.map(list, fn {_, promise} -> promise |> Promise.encode() |> Map.from_struct() end)}
+    list = Account.get_all_dapp_promise()
+
+    {:ok,
+     Enum.map(list, fn {_, promise} ->
+       promise |> Account.encode_promise() |> Map.from_struct()
+     end)}
   end
 
   def cash_dapp_promise(address) do
-    with pid when not is_nil(pid) <- DappPool.get(address),
-         :ok <- Dapp.cash(pid) do
+    with pid when not is_nil(pid) <- DappManager.get(address),
+         :ok <- DappManager.cash(pid) do
       :ok
     else
       _ ->
@@ -422,7 +421,7 @@ defmodule ARP.Admin do
       end
 
       {:ok, %{"status" => "0x1"}} = Contract.unbind_app_by_server(private_key, dapp_addr)
-      DappPromise.delete(dapp_addr)
+      Account.delete_dapp_promise(dapp_addr)
     end
   end
 

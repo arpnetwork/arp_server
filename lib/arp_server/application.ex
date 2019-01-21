@@ -1,6 +1,9 @@
 defmodule ARP.Application do
   @moduledoc false
 
+  alias ARP.Admin
+  alias ARP.API.HTTP.Router
+
   use Application
 
   def start(_type, _args) do
@@ -10,23 +13,18 @@ defmodule ARP.Application do
       File.mkdir_p!(data_path)
     end
 
-    ARP.Admin.init()
+    Admin.init()
 
     children = [
-      {DynamicSupervisor, strategy: :one_for_one, name: ARP.DynamicSupervisor},
       {ARP.Config, data_path: data_path},
       ARP.Nonce,
-      ARP.Account,
-      ARP.DevicePool,
-      ARP.DeviceNetSpeed,
-      ARP.DappPromise,
-      ARP.DappPool,
-      ARP.DevicePromise,
+      ARP.Account.Supervisor,
+      ARP.DeviceManager.Supervisor,
+      ARP.DappManager.Supervisor,
       ARP.Service,
-      ARP.DeviceBind,
       Plug.Cowboy.child_spec(
         scheme: :http,
-        plug: ARP.API.HTTP.Router,
+        plug: Router,
         options: [
           port: Application.get_env(:arp_server, :admin_port)
         ]

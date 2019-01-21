@@ -4,7 +4,7 @@ defmodule ARP.API.JSONRPC2.Account do
   use JSONRPC2.Server.Module
 
   alias ARP.API.JSONRPC2.Protocol
-  alias ARP.{Account, DappPromise, Promise, Utils}
+  alias ARP.{Account, Utils}
 
   def pay(promise, amount, device_addr, nonce, sign) do
     private_key = Account.private_key()
@@ -23,24 +23,18 @@ defmodule ARP.API.JSONRPC2.Account do
   end
 
   def last(cid, sign) do
-    decode_cid = Utils.decode_hex(cid)
     private_key = Account.private_key()
     addr = Account.address()
 
     method = Protocol.get_method(__MODULE__, __ENV__)
 
     with {:ok, dapp_addr} <- Protocol.verify(method, [cid], sign, addr) do
-      promise = DappPromise.get(dapp_addr)
+      promise = Account.get_dapp_promise(dapp_addr, true)
 
-      if promise == nil || promise.cid != decode_cid do
+      if promise == nil || promise.cid != cid do
         Protocol.response({:error, :promise_not_found})
       else
-        promise =
-          promise
-          |> Promise.encode()
-          |> Poison.encode!()
-
-        Protocol.response(%{promise: promise}, dapp_addr, private_key)
+        Protocol.response(%{promise: Poison.encode!(promise)}, dapp_addr, private_key)
       end
     else
       err ->
