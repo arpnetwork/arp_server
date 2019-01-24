@@ -32,11 +32,11 @@ defmodule ARP.Account.Promise do
     verify(p, cid, from, to)
   end
 
-  def verify(%__MODULE__{cid: cid} = p, cid, from, to) when is_binary(cid) do
+  def verify(%__MODULE__{cid: c} = p, cid, from, to) when is_binary(c) do
     verify(decode(p), cid, from, to)
   end
 
-  def verify(%__MODULE__{cid: cid} = p, cid, from, to) when is_integer(cid) do
+  def verify(%__MODULE__{cid: c} = p, cid, from, to) when is_integer(c) do
     if p.cid && p.from && p.to && p.amount && p.sign && p.cid == cid && p.from == from &&
          p.to == to do
       from_binary = p.from |> String.slice(2..-1) |> Base.decode16!(case: :mixed)
