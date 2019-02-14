@@ -164,8 +164,7 @@ defmodule ARP.DeviceManager.Pool do
     addr = device.address
 
     with false <- :ets.member(__MODULE__, addr),
-         {:ok, ref} <- create(device),
-         :ok <- Allowance.set(device.owner_address) do
+         {:ok, ref} <- create(device) do
       refs = Map.put(refs, ref, addr)
       {:reply, :ok, Map.put(state, :refs, refs)}
     else

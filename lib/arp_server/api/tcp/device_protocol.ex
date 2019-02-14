@@ -472,7 +472,8 @@ defmodule ARP.API.TCP.DeviceProtocol do
             _ -> 0
           end
 
-        with {:ok, %{id: id}} when id != 0 <- Contract.bank_allowance(addr, device_addr),
+        with {:ok, %{id: id} = allowance} when id != 0 <-
+               Contract.bank_allowance(addr, device_addr),
              device = DeviceManager.create(data),
              device =
                struct(device, %{
@@ -483,6 +484,7 @@ defmodule ARP.API.TCP.DeviceProtocol do
                  cid: id,
                  features: %{bpk: bpk, landscape: landscape}
                }),
+             :ok <- DeviceManager.set_allowance(device_addr, allowance),
              :ok <- online(device) do
           DeviceManager.test_speed(ip, sub_addr, self())
 

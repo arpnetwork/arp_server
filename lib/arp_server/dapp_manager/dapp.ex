@@ -160,29 +160,30 @@ defmodule ARP.DappManager.Dapp do
   end
 
   def handle_info(:check, dapp) do
-    # check expired and allowance
-    dapp_address = dapp.address
-    server_addr = Account.address()
-    last_promise = Account.get_dapp_promise(dapp_address)
+    Task.async(fn ->
+      # check expired and allowance
+      dapp_address = dapp.address
+      server_addr = Account.address()
+      last_promise = Account.get_dapp_promise(dapp_address)
 
-    dapp =
       with :ok <- check_bound(dapp_address, server_addr),
            {:ok, allowance} <- check_allowance(dapp_address, server_addr, last_promise) do
-        struct(dapp, allowance: allowance, state: @normal)
+        {:check_result, @normal, allowance}
       else
         :dying ->
           # release devices
           DeviceManager.release_by_dapp(dapp_address)
           do_cash(last_promise)
-          struct(dapp, state: @dying)
+          {:check_result, @dying, nil}
 
         :out_of_allowance ->
           do_cash(last_promise)
-          struct(dapp, state: @out_of_allowance)
+          {:check_result, @out_of_allowance, nil}
 
         _ ->
-          dapp
+          nil
       end
+    end)
 
     Process.send_after(self(), :check, @check_interval)
 
@@ -196,27 +197,44 @@ defmodule ARP.DappManager.Dapp do
 
     case result do
       :success ->
-        with promise when not is_nil(promise) <- last_promise,
-             %{cid: cid} = promise,
-             {:ok, %{id: ^cid, paid: paid}} <-
-               Contract.bank_allowance(dapp.address, server_address) do
-          Account.set_dapp_promise(dapp.address, struct(promise, paid: paid))
-        end
-
-      :failure ->
-        with promise when not is_nil(promise) <- last_promise,
-             {:ok, %{id: cid, paid: paid}} <-
-               Contract.bank_allowance(dapp.address, server_address) do
-          if promise.cid != cid do
-            Account.delete_dapp_promise(dapp.address)
-          else
+        Task.start(fn ->
+          with promise when not is_nil(promise) <- last_promise,
+               %{cid: cid} = promise,
+               {:ok, %{id: ^cid, paid: paid}} <-
+                 Contract.bank_allowance(dapp.address, server_address) do
             Account.set_dapp_promise(dapp.address, struct(promise, paid: paid))
           end
-        end
+        end)
+
+      :failure ->
+        Task.start(fn ->
+          with promise when not is_nil(promise) <- last_promise,
+               {:ok, %{id: cid, paid: paid}} <-
+                 Contract.bank_allowance(dapp.address, server_address) do
+            if promise.cid != cid do
+              Account.delete_dapp_promise(dapp.address)
+            else
+              Account.set_dapp_promise(dapp.address, struct(promise, paid: paid))
+            end
+          end
+        end)
 
       :retry ->
         do_cash(last_promise)
     end
+
+    {:noreply, dapp}
+  end
+
+  def handle_info({_ref, {:check_result, state, allowance}}, dapp) do
+    Logger.info("check_result: #{dapp.address} state: #{state}, allowance: #{inspect(allowance)}")
+
+    dapp =
+      if allowance do
+        struct(dapp, state: state, allowance: allowance)
+      else
+        struct(dapp, state: state)
+      end
 
     {:noreply, dapp}
   end

@@ -42,8 +42,8 @@ defmodule ARP.DeviceManager.Allowance do
     GenServer.call(__MODULE__, {:delete, owner_addr})
   end
 
-  def set(owner_addr) do
-    GenServer.call(__MODULE__, {:set, owner_addr})
+  def set(owner_addr, allowance) do
+    GenServer.call(__MODULE__, {:set, owner_addr, allowance})
   end
 
   def check(owner_addr, amount) do
@@ -95,20 +95,15 @@ defmodule ARP.DeviceManager.Allowance do
     {:reply, :ok, state}
   end
 
-  def handle_call({:set, owner_addr}, _from, state) do
-    server_addr = Account.address()
-
+  def handle_call({:set, owner_addr, allowance}, _from, state) do
     if :ets.member(__MODULE__, owner_addr) do
       {:reply, :ok, state}
     else
-      with {:ok, allowance} <- Contract.bank_allowance(server_addr, owner_addr),
-           true <- allowance.id > 0,
-           true <- allowance.expired == 0 do
+      if allowance.id > 0 && allowance.expired == 0 do
         :ets.insert(__MODULE__, {owner_addr, %{allowance: allowance, increasing: false}})
         {:reply, :ok, state}
       else
-        _ ->
-          {:reply, {:error, :allowance_err}, state}
+        {:reply, {:error, :allowance_err}, state}
       end
     end
   end

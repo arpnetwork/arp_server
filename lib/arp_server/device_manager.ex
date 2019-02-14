@@ -89,4 +89,8 @@ defmodule ARP.DeviceManager do
   def check_allowance(device_addr, amount) do
     Allowance.check(device_addr, amount)
   end
+
+  def set_allowance(owner_addr, allowance) do
+    Allowance.set(owner_addr, allowance)
+  end
 end
